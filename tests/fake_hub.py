@@ -10,6 +10,8 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from .fake_maintenance import FakeMaintenance
+
 TOKEN = "secret-token"
 COORDINATOR_IEEE = "00124b0001020304"
 
@@ -409,6 +411,8 @@ class FakeHub:
         # `stored` of the next apply's result (a registry that is not writable).
         self.import_stored = True
         self.command_errors: dict[str, dict[str, str]] = {}
+        # Backups, restore, the hub's and the NCP's firmware updates.
+        self.maint = FakeMaintenance(self)
         self.sockets: list[tuple[web.WebSocketResponse, dict[int, set[str]]]] = []
         self.connections = 0
         self.seq = 0
@@ -608,6 +612,8 @@ class FakeHub:
                 }
             )
 
+        if await self.maint.answer(ws, req, ok, err):
+            return
         if kind == "hub/info" and self.hang_after_connect and subs:
             return
         if kind == "hub/info" and self.hub_info:
@@ -618,6 +624,7 @@ class FakeHub:
             )
             await ok(
                 extra
+                | self.maint.info()
                 | {
                     "name": self.name,
                     "api_version": self.api_version,

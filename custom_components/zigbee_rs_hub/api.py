@@ -38,11 +38,14 @@ class InvalidAuth(HubError):
 class HubApiError(HubError):
     """A request failed on the hub (`success: false`)."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, backup: dict[str, Any] | None = None) -> None:
         """Error with the hub's code and message."""
         super().__init__(f"{code}: {message}" if message else code)
         self.code = code
         self.message = message
+        # A restore or reset that failed after the leave answers the replaced
+        # network's backup next to the error (device-support 14.6).
+        self.backup = backup
 
 
 def hub_url(host: str, port: int, path: str) -> str:
@@ -203,8 +206,13 @@ class HubClient:
                 fut.set_result(frame.get("result"))
             else:
                 err = frame.get("error") or {}
+                backup = frame.get("backup")
                 fut.set_exception(
-                    HubApiError(str(err.get("code", "error")), str(err.get("message", "")))
+                    HubApiError(
+                        str(err.get("code", "error")),
+                        str(err.get("message", "")),
+                        backup if isinstance(backup, dict) else None,
+                    )
                 )
         elif kind == "event":
             cb = self._subscriptions.get(frame.get("id"))

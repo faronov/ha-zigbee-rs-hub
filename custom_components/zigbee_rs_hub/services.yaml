@@ -342,3 +342,78 @@ copy_names_areas:
       default: false
       selector:
         boolean:
+backup_now:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+restore_backup:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    file:
+      required: true
+      example: "20261127T183801Z_scheduled.json"
+      selector:
+        text:
+    force:
+      default: false
+      selector:
+        boolean:
+    confirm:
+      default: false
+      selector:
+        boolean:
+    confirm_ieee_write_once:
+      default: false
+      selector:
+        boolean:
+    allow_ieee_change:
+      default: true
+      selector:
+        boolean:
+    skip_backup:
+      default: false
+      selector:
+        boolean:
+ncp_update:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    url:
+      example: "https://example.com/zigbee-rs-ncp-donglem.gbl"
+      selector:
+        text:
+          type: url
+    path:
+      example: "/config/zigbee-rs-ncp-donglem.gbl"
+      selector:
+        text:
+    sha256:
+      selector:
+        text:
+    confirm:
+      default: false
+      selector:
+        boolean:
+    foreign:
+      default: false
+      selector:
+        boolean:
+    force:
+      default: false
+      selector:
+        boolean:
+    restore:
+      default: true
+      selector:
+        boolean:
+    upload_only:
+      default: false
+      selector:
+        boolean:

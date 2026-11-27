@@ -48,15 +48,11 @@
     "step": {
       "init": {
         "title": "zigbee-rs hub",
-        "data": {
-          "sync_time_zone": "Sync the hub time zone from Home Assistant"
-        },
-        "data_description": {
-          "sync_time_zone": "Set the hub's time zone (its Time cluster and the Tuya time sync for devices, its automations' schedules) to Home Assistant's, now, on every connection and when Home Assistant's changes."
-        },
         "menu_options": {
           "time_zone": "Time zone",
-          "mqtt": "MQTT bridge"
+          "mqtt": "MQTT bridge",
+          "backups": "Backups",
+          "hub_firmware": "Hub firmware"
         }
       },
       "time_zone": {
@@ -85,6 +81,29 @@
           "username": "Empty: an anonymous connection.",
           "password": "Write-only: the hub never shows it. Empty keeps the stored one, unless the broker or the user name changes: then the stored password is removed (enter it again).",
           "base_topic": "Zigbee2MQTT's base topic (zigbee2mqtt)."
+        }
+      },
+      "backups": {
+        "title": "Backups",
+        "description": "Backups of the hub's Zigbee network with its keys, and a snapshot of the hub's data, kept in Home Assistant (.storage/zigbee_rs_hub_backups). Home Assistant's own backups include them: keep those private.",
+        "data": {
+          "backup_interval": "Hours between scheduled backups",
+          "backup_keep": "Backups to keep",
+          "backup_on_change": "Back up after network changes"
+        },
+        "data_description": {
+          "backup_interval": "How often a backup of the network (with its keys) and of the hub's data is kept in Home Assistant; 0: no scheduled backups. Home Assistant's own backups include these files.",
+          "backup_keep": "How many of this hub's backups are kept; older ones are deleted.",
+          "backup_on_change": "Also back up two minutes after a device joined or was removed, the channel changed, or a network was formed, restored or imported."
+        }
+      },
+      "hub_firmware": {
+        "title": "Hub firmware",
+        "data": {
+          "replace_stock_firmware": "Allow the first hub update to replace SONOFF's firmware"
+        },
+        "data_description": {
+          "replace_stock_firmware": "SONOFF Dongle Max: the hub's first self-update writes over SONOFF's original firmware in the other app slot. Afterwards the way back to SONOFF's firmware is USB only (SONOFF Dongle Flasher or a flash backup)."
         }
       }
     },
@@ -384,6 +403,38 @@
             "name": "Last error"
           }
         }
+      },
+      "last_backup": {
+        "name": "Last backup",
+        "state_attributes": {
+          "file": {
+            "name": "File"
+          },
+          "reason": {
+            "name": "Reason"
+          },
+          "devices": {
+            "name": "Devices"
+          },
+          "pan_id": {
+            "name": "PAN ID"
+          },
+          "extended_pan_id": {
+            "name": "Extended PAN ID"
+          },
+          "channel": {
+            "name": "Channel"
+          },
+          "backups": {
+            "name": "Backups"
+          },
+          "last_attempt": {
+            "name": "Last attempt"
+          },
+          "last_error": {
+            "name": "Last error"
+          }
+        }
       }
     },
     "switch": {
@@ -397,6 +448,12 @@
     "update": {
       "firmware": {
         "name": "Firmware"
+      },
+      "hub_firmware": {
+        "name": "Hub firmware"
+      },
+      "ncp_firmware": {
+        "name": "Radio firmware"
       }
     }
   },
@@ -917,6 +974,92 @@
         "overwrite": {
           "name": "Overwrite",
           "description": "Also where the hub's device has a name or an area already."
+        }
+      }
+    },
+    "backup_now": {
+      "name": "Back up now",
+      "description": "Backs up the hub's Zigbee network with its keys (network key, link keys, frame counters) and a snapshot of the hub's data into Home Assistant (.storage/zigbee_rs_hub_backups). Keep the files private: whoever has one can join and control the network.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub; all hubs when empty."
+        }
+      }
+    },
+    "restore_backup": {
+      "name": "Restore backup",
+      "description": "WARNING: replaces the Zigbee network on the hub's radio with the one in a backup. Only to recover this network or to move it to this hub, never while another coordinator runs the same network. The running network is backed up first. A radio that runs a network needs Replace the running network; records of another network on the hub need Re-tag records. Devices of a network other than the backup's must join again.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "file": {
+          "name": "Backup file",
+          "description": "A file name from the Last backup sensor's backups attribute, or a path Home Assistant may read (allowlist_external_dirs); plain Open ZigBee Coordinator Backup files (ZHA, Zigbee2MQTT) too."
+        },
+        "force": {
+          "name": "Replace the running network",
+          "description": "The radio runs or stores a network (also the backup's own): replace it."
+        },
+        "confirm": {
+          "name": "Re-tag records",
+          "description": "The hub's device records belong to another network: re-tag them as the restored network's."
+        },
+        "confirm_ieee_write_once": {
+          "name": "Write the coordinator IEEE once",
+          "description": "EmberZNet radios: write the backup's coordinator IEEE to the one-time token (irreversible)."
+        },
+        "allow_ieee_change": {
+          "name": "Take the backup's coordinator IEEE",
+          "description": "Off: keep this radio's IEEE (the devices are configured again)."
+        },
+        "skip_backup": {
+          "name": "Skip the backup",
+          "description": "Do not back up the running network first (neither in Home Assistant nor on the hub)."
+        }
+      }
+    },
+    "ncp_update": {
+      "name": "Update the radio firmware",
+      "description": "WARNING (SONOFF Dongle Max): flashes a GBL image onto the MG24 radio through its Gecko bootloader. The hub uploads and checks the image; then the network is backed up (in Home Assistant and on the hub), the radio is flashed, the hub restarts on the new firmware and puts the network back. Takes minutes: do not power the dongle off meanwhile. The bootloader is never replaced, so a failed flash can be repeated.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "url": {
+          "name": "Image URL",
+          "description": "Where Home Assistant downloads the .gbl file."
+        },
+        "path": {
+          "name": "Image file",
+          "description": "A .gbl file Home Assistant may read (allowlist_external_dirs)."
+        },
+        "sha256": {
+          "name": "SHA-256",
+          "description": "The image's expected SHA-256 (hex)."
+        },
+        "confirm": {
+          "name": "Confirm",
+          "description": "Flash the radio (not needed for Upload only)."
+        },
+        "foreign": {
+          "name": "Not a zigbee-rs NCP",
+          "description": "Needed for any image but a zigbee-rs ZRHP NCP application (SONOFF's EmberZNet, an NV clear): the hub then runs on whatever the radio answers."
+        },
+        "force": {
+          "name": "Without a backup",
+          "description": "Flash even if the network cannot be backed up first. Dangerous: the network on the radio can be lost."
+        },
+        "restore": {
+          "name": "Restore the network",
+          "description": "Put the network kept before the flash onto the new firmware."
+        },
+        "upload_only": {
+          "name": "Upload only",
+          "description": "Upload and check the image and report what it is; do not flash."
         }
       }
     }

@@ -139,4 +139,22 @@ TO_REDACT: Final = {
     "install_code",
     "security_key",
     "gpd_key",
+    "tc_link_key",
+    "hashed_tclk",
+    "password",
 }
+
+# Backups of the hub's network and data, kept in Home Assistant (backup.py).
+SERVICE_BACKUP_NOW: Final = "backup_now"
+SERVICE_RESTORE_BACKUP: Final = "restore_backup"
+CONF_BACKUP_INTERVAL: Final = "backup_interval"
+CONF_BACKUP_KEEP: Final = "backup_keep"
+CONF_BACKUP_ON_CHANGE: Final = "backup_on_change"
+# Hours between scheduled backups (0: none) and how many files are kept.
+BACKUP_INTERVAL_DEFAULT: Final = 24
+BACKUP_KEEP_DEFAULT: Final = 10
+
+# Firmware of the hub and of its NCP (firmware.py).
+SERVICE_NCP_UPDATE: Final = "ncp_update"
+# The Dongle Max's first self-update writes over SONOFF's application.
+CONF_REPLACE_STOCK: Final = "replace_stock_firmware"

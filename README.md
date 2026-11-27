@@ -59,9 +59,96 @@ has, and the integration maps them 1:1 onto HA platforms.
   from the hub's web UI (Updates tab) or with `hubctl ota-upload` /
   `ota-stream`. The 4 MB images have no Zigbee OTA (no `ota` in
   `hub/info`): no update entities.
+- **Backups of the network in Home Assistant**: the hub's Open ZigBee
+  Coordinator Backup **with the keys** (`network/backup`: network key,
+  Trust Center and device link keys, frame counters, devices and the hub's
+  groups) plus a read-only snapshot of the hub's other data (device
+  records with their names, automations, reporting defaults, time zone,
+  user definitions' list, OTA settings: the hub has no API that exports
+  or imports them), kept as
+  `.storage/zigbee_rs_hub_backups/<entry id>/<UTC time>_<reason>.json`
+  (mode 0600, directory 0700). Home Assistant's own backups include
+  `.storage`, so they carry these files too (keep HA's backups private;
+  its automatic backups are encrypted by default since 2025.1). The
+  options are in *Configure* → *Backups*. A backup is taken every
+  **24 h** (*Hours between scheduled backups*, 0: none; HA checks
+  hourly, the first time five minutes after set-up), **two minutes after a
+  change** (a device joined or was removed, the channel changed, a network
+  was formed, restored or imported; *Back up after network
+  changes*), before a restore and before a radio firmware update, and by
+  **`zigbee_rs_hub.backup_now`**; the newest **10** are kept
+  (*Backups to keep*). Only a backup with the network key is kept (a hub
+  whose NCP locks the key export cannot be backed up). A **Last backup**
+  diagnostic sensor on the hub device shows when, with the file, reason,
+  devices, PAN, extended PAN ID and channel, the stored files and the last
+  attempt's error. Keys are never logged nor shown in states or
+  diagnostics. Automatic backups need the network up.
+- **`zigbee_rs_hub.restore_backup`** (administrators; `file`: a name from
+  the sensor's `backups`, or a path HA may read, also a ZHA or
+  Zigbee2MQTT backup file) puts a backup's network onto the hub's radio
+  with `network/restore`, the devices sent in batches of 8 as the hub's web
+  UI does. **It replaces the network on the radio**: only to recover this
+  network or move it to this hub, never while another coordinator runs
+  it. The running network is backed up first (`skip_backup` skips that,
+  here and on the hub), and the hub's own backup of the network it
+  replaced (also when a restore fails after the leave) is kept as a
+  `replaced` file. The hub's safety rules apply unchanged: a radio that
+  runs a network needs `force`, records of another network on the hub
+  `confirm`, an EmberZNet radio's one-time IEEE token
+  `confirm_ieee_write_once`; `allow_ieee_change: false` keeps the radio's
+  IEEE. Only the network is restored: names, automations and settings of
+  the snapshot are for reference.
+- **Hub firmware** (`update`, on the hub device) on hubs with the
+  self-update API (`firmware` in `hub/info` `maintenance`: the SONOFF
+  Dongle Max, `zrh-donglem` 0.3.0 or newer): the installed version from
+  `hub/info`, the newest `hub-v*` release of
+  [faronov/zigbee-rs-hub](https://github.com/faronov/zigbee-rs-hub/releases)
+  (checked 90 s after set-up, then every 12 h, and by *Check for updates*;
+  pre-releases are skipped), its release notes and link. The image is the
+  one `release-manifest.json` lists for this hub: the board whose
+  `firmware` is the running image's (`zrh-donglem`), of the same edition
+  (`devtools` or standard, `hub/info` `edition`) and PSRAM variant
+  (`hub/system`). Install downloads it in Home Assistant, checks its
+  SHA-256 against the manifest and the release's `SHA256SUMS`, uploads it
+  in 4 KiB chunks (`firmware/begin`, `chunk`, `end`: the hub checks the
+  image again and selects it) with progress, reboots the hub
+  (`hub/reboot`) and waits for it to come back with the new version;
+  *Back up* takes a backup first. A Dongle Max still holding SONOFF's
+  application in the other slot (its first self-update) is updated only
+  with *Configure* → *Hub firmware* → *Allow the first hub update to
+  replace SONOFF's firmware* (shown for such hubs only): afterwards the way back to SONOFF's firmware is USB only.
+  Hubs without the API get no entity: the ESP32-S3 Thread Border Router
+  hub (its 8 MB layout has A/B slots, but no update API; flash it with
+  the web flasher or `esptool`) and the 4 MB layout (no second slot).
+- **Radio firmware** (`update`, on the hub device) on hubs with the NCP
+  updater (`ncp_update` in `maintenance`: the SONOFF Dongle Max's MG24
+  through its Gecko bootloader, hub firmware after 0.4.1): the radio's
+  firmware from `network/info` (`EmberZNet 7.4.5.0` or the zigbee-rs ZRHP
+  NCP's version). A newer `ncp-v*` release of
+  [faronov/zigbee-rs](https://github.com/faronov/zigbee-rs/releases) is
+  offered only while the radio runs the zigbee-rs NCP and only when its
+  `release-manifest.json` has a GBL for the Dongle-M (none yet: the
+  releases carry ESP32-H2/C6 images only, and the entity says so).
+  Switching from SONOFF's EmberZNet to the zigbee-rs NCP, or back, is not
+  an update: **`zigbee_rs_hub.ncp_update`** (administrators) takes any
+  `.gbl` by `url` or `path` (optional `sha256`), uploads it in 4 KiB
+  chunks for the hub to check (`ncp/update/begin`, `chunk`, `end`;
+  `upload_only` stops there and reports what the image is), then, with
+  `confirm`, backs up the network in Home Assistant (refused if that
+  fails, unless `force`, which also lets the hub flash without its own
+  backup) and starts the flash (`ncp/update/start`; `foreign` for any
+  image but a zigbee-rs ZRHP NCP application, such as SONOFF's EmberZNet or
+  an NV clear; `restore: false` leaves the kept network off the new
+  firmware). The hub backs up and keeps the network itself, flashes,
+  restarts on the new firmware and restores the network; the action waits
+  for that (minutes) and answers the hub's update state. See
+  [Replacing the MG24 firmware](https://github.com/faronov/zigbee-rs-hub/blob/main/docs/dongle-max.md#replacing-the-mg24-firmware-zigbee-rs-zrhp)
+  for the images and the way back.
 - Services: `zigbee_rs_hub.permit_join` (duration, Green Power window, a
   router to join through), `zigbee_rs_hub.reinterview_device`,
-  `zigbee_rs_hub.reconfigure_device`, `zigbee_rs_hub.update_catalog`.
+  `zigbee_rs_hub.reconfigure_device`, `zigbee_rs_hub.update_catalog`;
+  for administrators `zigbee_rs_hub.backup_now`,
+  `zigbee_rs_hub.restore_backup` and `zigbee_rs_hub.ncp_update` (above).
 - Migration from ZHA without pairing again
   ([`docs/migration.md`](https://github.com/faronov/zigbee-rs-hub/blob/main/docs/migration.md)):
   `zigbee_rs_hub.import_from_zha` reads ZHA's `zigbee.db` (zigpy schemas
@@ -159,7 +246,7 @@ has, and the integration maps them 1:1 onto HA platforms.
     change; sleepy ones find the network when they wake, some only after a
     rejoin.
 - Option **Sync the hub time zone from Home Assistant** (on for entries
-  made since it exists, off for older ones; Configure on the entry): on
+  made since it exists, off for older ones; *Configure* → *Time zone*): on
   every connection, when HA's time zone changes and when the option is
   turned on, the integration reads HA's zone (`Europe/Kyiv`), takes the
   POSIX TZ string from the last line of its TZif file (`zoneinfo`'s TZPATH,
@@ -264,6 +351,9 @@ What needs which hub firmware:
 | `import_from_z2m` | 0.4.0 |
 | Interview resumes sensor | 0.4.1 |
 | NCP log level | the next hub release (`network/ncp_log`, zigbee-rs NCPs) |
+| Backups in HA (`backup_now`, `restore_backup`, Last backup sensor) | 0.1.3 |
+| Hub firmware `update` entity (SONOFF Dongle Max) | 0.3.0 |
+| Radio firmware `update` entity, `ncp_update` (SONOFF Dongle Max) | after 0.4.1 (`main`) |
 
 Use the newest hub release with the newest integration; the end-to-end
 tests run against the hub release named in `HUB_REF` of
@@ -359,6 +449,10 @@ From then on HACS tracks the installed version.
 | `bindings/create`, `bindings/delete`, `bindings/read`, `bindings/list`, `groups/create`, `groups/delete`, `groups/add_member`, `groups/remove_member`, `groups/list`, `devices/get` (endpoints) | `bind`, `unbind`, `read_bindings`, `group_*` services |
 | `mqtt/config/get`, `mqtt/config/set`, `mqtt/status`, `network/set_tx_power`, `network/ncp_log`, `network/change_channel`, event `network_updated` → `network/info` | the options flow's MQTT bridge step, hub settings entities (administrators), `change_channel` service |
 | `network/import/preview`, `network/import` with Zigbee2MQTT's files | `import_from_z2m` service (the files read in HA as `hubctl import z2m` reads them), then the areas of Zigbee2MQTT's MQTT devices |
+| `network/backup {keys: true}`; events `device_added`, `device_removed`, `network_updated` | backup files, **Last backup** sensor, `backup_now` service, scheduled and on-change backups |
+| `network/restore {backup, more}`, then `{devices, more}` batches; the error frame's `backup` | `restore_backup` service; the replaced network's backup kept |
+| `hub/system`, `firmware/status`, `firmware/begin`/`chunk`/`end`/`abort`, `hub/reboot` | **Hub firmware** `update` entity |
+| `ncp/update/status`, `ncp/update/begin`/`chunk`/`end`/`abort`/`start` | **Radio firmware** `update` entity, `ncp_update` service |
 
 ## Development and tests
 
@@ -386,6 +480,11 @@ default the checkout hubctl was built in). `tests/test_e2e_ota.py` runs
 settings and the Zigbee2MQTT import against `hubctl --sim serve` (with
 `--sim-devices`), and compares the integration's import document with
 `hubctl import z2m --out`.
+`tests/test_e2e_backup.py` takes a backup of the simulated network and
+restores it. The simulated hub has neither the self-update API nor the
+NCP updater: the firmware entities and `ncp_update` are tested against the
+fake hub (`tests/fake_maintenance.py`, with a fake GitHub API serving
+releases and their assets).
 
 ```sh
 python3.14 -m venv .venv            # or: uv venv --python 3.14 .venv
@@ -398,7 +497,7 @@ git clone --branch hub-v0.4.1 https://github.com/faronov/zigbee-rs-hub.git
 HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl .venv/bin/python -m pytest
 # the same on the EZSP backend's simulated NCP:
 HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl HUBCTL_BACKEND=ezsp \
-    .venv/bin/python -m pytest tests/test_e2e_hubctl.py tests/test_e2e_network.py
+    .venv/bin/python -m pytest tests/test_e2e_hubctl.py tests/test_e2e_network.py tests/test_e2e_backup.py
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and
@@ -428,6 +527,13 @@ and the HACS validation.
 - Renaming a device in HA does not rename it on the hub (`devices/update`).
 - User definitions and Green Power bindings are not exposed in HA, nor are
   the catalog settings (`catalog/config`); use the hub's own tools for them.
+- Backups restore the network only: the hub has no export or import of its
+  other data (names, automations, settings), so the backup's `hub_data`
+  snapshot is for reference.
+- No firmware update from HA for the ESP32-S3 hub (no self-update API) nor
+  for its ESP32-H2 NCP (no NCP update API on the hub: the H2 is flashed
+  over its own USB port), and no zigbee-rs NCP release image for the Dongle
+  Max's MG24 yet (`ncp_update` with a GBL built from zigbee-rs).
 
 ## License
 

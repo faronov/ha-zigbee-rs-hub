@@ -52,7 +52,7 @@ async def _user(hass: HomeAssistant, admin: bool) -> MockUser:
 async def _mqtt_form(hass: HomeAssistant, entry: MockConfigEntry) -> dict:
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.MENU
-    assert result["menu_options"] == ["time_zone", "mqtt"]
+    assert result["menu_options"] == ["time_zone", "mqtt", "backups"]
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"next_step_id": "mqtt"}
     )

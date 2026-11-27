@@ -34,6 +34,7 @@ async def async_get_config_entry_diagnostics(
             "catalog": hub.catalog.as_dict(),
             "settings": hub.settings.as_dict(),
             "topology": hub.topology.last,
+            "backups": hub.backups.as_dict(),
         },
         TO_REDACT | SETTINGS_REDACT,
     )
