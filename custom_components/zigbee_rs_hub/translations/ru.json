@@ -206,6 +206,135 @@
       }
     }
   },
+  "device_automation": {
+    "trigger_type": {
+      "on": "{subtype}: Вкл",
+      "off": "{subtype}: Выкл",
+      "toggle": "{subtype}: Переключить",
+      "brightness_move_up": "{subtype}: Ярче (удержание)",
+      "brightness_move_down": "{subtype}: Темнее (удержание)",
+      "brightness_step_up": "{subtype}: Ярче",
+      "brightness_step_down": "{subtype}: Темнее",
+      "brightness_stop": "{subtype}: Стоп яркости",
+      "brightness_move_to_level": "{subtype}: Перейти к уровню",
+      "color_temperature_move": "{subtype}: Перейти к цветовой температуре",
+      "color_temperature_move_up": "{subtype}: Цветовая температура вверх (удержание)",
+      "color_temperature_move_down": "{subtype}: Цветовая температура вниз (удержание)",
+      "color_temperature_move_stop": "{subtype}: Стоп цветовой температуры",
+      "color_temperature_step_up": "{subtype}: Цветовая температура вверх",
+      "color_temperature_step_down": "{subtype}: Цветовая температура вниз",
+      "recall_scene": "{subtype}: Вызвать сцену",
+      "open": "{subtype}: Открыть",
+      "close": "{subtype}: Закрыть",
+      "stop": "{subtype}: Стоп",
+      "arm_disarm": "{subtype}: Снять с охраны",
+      "arm_day": "{subtype}: Под охрану (дневные зоны)",
+      "arm_night": "{subtype}: Под охрану (ночные зоны)",
+      "arm_all": "{subtype}: Под охрану (все зоны)",
+      "emergency": "{subtype}: Тревога",
+      "fire": "{subtype}: Пожар",
+      "panic": "{subtype}: Паника",
+      "press": "{subtype}: Нажата",
+      "release": "{subtype}: Отпущена",
+      "hold": "{subtype}: Удерживается",
+      "single": "{subtype}: Одно нажатие",
+      "double": "{subtype}: Двойное нажатие",
+      "triple": "{subtype}: Тройное нажатие",
+      "quadruple": "{subtype}: Четверное нажатие",
+      "many": "{subtype}: Много нажатий",
+      "long": "{subtype}: Долгое нажатие",
+      "shake": "{subtype}: Встряхивание",
+      "tap": "{subtype}: Касание",
+      "on_press": "{subtype}: «Вкл» нажата",
+      "on_hold": "{subtype}: «Вкл» удерживается",
+      "on_press_release": "{subtype}: «Вкл» отпущена",
+      "on_hold_release": "{subtype}: «Вкл» отпущена после удержания",
+      "off_press": "{subtype}: «Выкл» нажата",
+      "off_hold": "{subtype}: «Выкл» удерживается",
+      "off_press_release": "{subtype}: «Выкл» отпущена",
+      "off_hold_release": "{subtype}: «Выкл» отпущена после удержания",
+      "up_press": "{subtype}: «Вверх» нажата",
+      "up_hold": "{subtype}: «Вверх» удерживается",
+      "up_press_release": "{subtype}: «Вверх» отпущена",
+      "up_hold_release": "{subtype}: «Вверх» отпущена после удержания",
+      "down_press": "{subtype}: «Вниз» нажата",
+      "down_hold": "{subtype}: «Вниз» удерживается",
+      "down_press_release": "{subtype}: «Вниз» отпущена",
+      "down_hold_release": "{subtype}: «Вниз» отпущена после удержания",
+      "arrow_left_click": "{subtype}: Стрелка влево нажата",
+      "arrow_left_hold": "{subtype}: Стрелка влево удерживается",
+      "arrow_left_release": "{subtype}: Стрелка влево отпущена",
+      "arrow_right_click": "{subtype}: Стрелка вправо нажата",
+      "arrow_right_hold": "{subtype}: Стрелка вправо удерживается",
+      "arrow_right_release": "{subtype}: Стрелка вправо отпущена",
+      "brightness_up_click": "{subtype}: «Ярче» нажата",
+      "brightness_up_hold": "{subtype}: «Ярче» удерживается",
+      "brightness_up_release": "{subtype}: «Ярче» отпущена",
+      "brightness_down_click": "{subtype}: «Темнее» нажата",
+      "brightness_down_hold": "{subtype}: «Темнее» удерживается",
+      "brightness_down_release": "{subtype}: «Темнее» отпущена"
+    },
+    "trigger_subtype": {
+      "action": "Действие",
+      "lock_event": "Замок",
+      "rocker_a_top": "Клавиша A вверху",
+      "rocker_a_bottom": "Клавиша A внизу",
+      "rocker_b_top": "Клавиша B вверху",
+      "rocker_b_bottom": "Клавиша B внизу"
+    }
+  },
+  "issues": {
+    "hub_crash": {
+      "title": "{hub} перезапустился после сбоя",
+      "description": "Хаб zigbee-rs {hub} перезапустился после сбоя ({reason}); загрузка в {boot}. Устройства и настройки сохранены, но сбой — это ошибка прошивки или проблема с питанием (brownout: проверьте блок питания). Команда консоли хаба `info` показывает последнюю запись о панике: сообщите о ней, приложив диагностику хаба.\n\nПроблема исчезнет после штатного перезапуска хаба. Проигнорируйте её, чтобы скрыть до следующего сбоя."
+    },
+    "catalog_failed": {
+      "title": "Не удалось обновить каталог определений на {hub}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Повторить обновление каталога",
+            "description": "Последнее обновление каталога определений хаба {hub} не удалось:\n\n{error}\n\nПроверьте, что Home Assistant может связаться с зеркалом каталога, заданным на хабе, и отправьте форму, чтобы запустить обновление снова."
+          }
+        },
+        "error": {
+          "failed": "Обновление снова не удалось: {error}",
+          "not_connected": "Хаб не подключён."
+        }
+      }
+    },
+    "no_definition": {
+      "title": "У {name} нет определения устройства",
+      "description": "В каталоге определений хаба {hub} нет ничего для {name} ({model}): устройство работает только на общей поддержке Zigbee хаба, поэтому специфичных для него сущностей и настроек может не хватать. Если чего-то не хватает, запросите определение (приложите диагностику устройства) или загрузите своё в веб-интерфейсе хаба.\n\nПроблема исчезнет, когда у устройства появится определение."
+    },
+    "definition_refused": {
+      "title": "Определению {name} нужна более новая прошивка хаба",
+      "description": "В каталоге определений хаба {hub} есть определение для {name} ({model}), которое эта прошивка хаба не может выполнить: {reason}. Пока прошивка хаба не обновлена, устройство работает только на общей поддержке Zigbee.\n\nПроблема исчезнет, когда у устройства появится определение, которое хаб может выполнить."
+    },
+    "interview_partial": {
+      "title": "Опрос {name} не завершён",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Опросить {name} заново",
+            "description": "Уже больше {hours} ч {name} ответило не на все запросы опроса хаба, поэтому части сущностей может не быть. Хаб продолжит опрос, когда устройство переподключится.\n\nУстройства на батарейках спят: сначала разбудите устройство (нажмите его кнопку или сделайте то, что инструкция говорит для сопряжения), затем сразу отправьте форму, чтобы опросить его заново."
+          }
+        },
+        "error": {
+          "failed": "Повторный опрос не удался: {error}",
+          "not_connected": "Хаб не подключён."
+        }
+      }
+    },
+    "device_offline": {
+      "title": "{name} не в сети",
+      "description": "Хаб {hub} не слышал {name} больше {hours} ч (последний раз: {last_seen}). Проверьте питание или батарейку и расстояние до ближайшего роутера; сброшенное устройство нужно подключить заново.\n\nПроблема исчезнет, когда устройство снова будет слышно или его удалят."
+    },
+    "device_left": {
+      "title": "{name} покинуло сеть",
+      "description": "{name} покинуло сеть Zigbee хаба {hub} и не вернулось. Подключите его заново (разрешите подключение, затем сбросьте устройство) или удалите устройство, если его больше нет.\n\nПроблема исчезнет, когда устройство переподключится или будет удалено."
+    }
+  },
   "exceptions": {
     "unknown_device": {
       "message": "Устройство {device_id} не принадлежит загруженному хабу zigbee-rs."

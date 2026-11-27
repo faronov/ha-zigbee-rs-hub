@@ -28,6 +28,16 @@ has, and the integration maps them 1:1 onto HA platforms.
 - Entities for all platforms the hub serves: `sensor`, `binary_sensor`,
   `switch`, `light`, `number`, `select`, `button`, `text`, `event`, `cover`,
   `climate`, `lock`, `fan`, `siren`, `valve`, `scene`.
+- **Device triggers** for buttons and remotes: every event type of a
+  device's `event` entities (`event_types` of the hub's entity record: `on`,
+  `off`, `toggle`, `brightness_step_up`, `single`, `double`, `hold`,
+  `arrow_left_click`, …; no per-device code) is a trigger of the device in
+  the automation editor ("Action: Single press"), subtype = the entity's key
+  (with `_<endpoint>` when the key exists on several endpoints). They fire on
+  the bus event `zigbee_rs_hub_action` (`device_id`, `device`, `uid`,
+  `entity_id`, `type`, `subtype`, `endpoint`, `attributes`), sent for every
+  `entity_event`, also while the event entity is disabled. Common event
+  types and subtypes are translated; others show as the hub names them.
 - Zigbee groups of the hub (device-support 14.9): a device per group with
   members (`grp:<id>`, model "Zigbee group"), its `light` (or `switch`) with
   the aggregated state, commands sent as one groupcast, and its scenes as HA
@@ -102,6 +112,28 @@ has, and the integration maps them 1:1 onto HA platforms.
   edited in the hub's web UI or over the API, not in HA.
 - HA's **Delete device** removes the device from the network
   (`devices/remove`); devices removed on the hub disappear from HA.
+- **Hub events and logbook**: the device life cycle as the bus event
+  `zigbee_rs_hub_event` (`device_id`, `device`, `name`, `type`,
+  `config_entry_id`, details) with a logbook entry on the device:
+  `device_joined` (a new device being interviewed), `device_added` (Green
+  Power, imported), `device_left`, `device_rejoined` (back after a leave, or
+  a new NWK address), `device_removed`, `interview_started`,
+  `interview_complete`, `interview_partial`, `definition_resolved`,
+  `definition_removed`, `definition_missing` (the catalog has none, or only
+  ones this firmware cannot run, with the reason) and `hub_crashed`. The hub
+  sends no join, leave or announce events of its own: they are derived from
+  its device records, `interview_progress`, the catalog status and
+  `hub/system`; a snapshot after a reconnect fires nothing, and a device's
+  leave or rejoin at most once a minute.
+- **Repairs** (*Settings → System → Repairs*), removed again when resolved:
+  the hub's last restart was a crash (`hub/system` `reset_reason`: panic,
+  watchdog, brownout; kept over HA restarts, shown again after the next
+  crash, gone after a clean restart); a device without a definition (the
+  catalog has nothing for it, or its matches need features this hub firmware
+  lacks, e.g. `requires template.tuya_…`); an interview partial for more than
+  2 hours (fix: wake the device and re-interview it); a device unheard for
+  more than 24 hours, or gone from the network (left) for 10 minutes; a
+  failed definitions catalog update (fix: run it again).
 - Diagnostics (entry and device; the device download includes the hub's
   `devices/diagnostics`), with the token and any keys redacted.
 - English and Russian translations.
@@ -142,6 +174,7 @@ What needs which hub firmware:
 | Hub automations (API 1.3), Zigbee groups and their scenes | 0.2.0 |
 | Firmware `update` entities (8 MB images only), hub time zone from HA | 0.3.0 |
 | `import_from_zha`, `copy_names_areas` | 0.4.0 |
+| Device triggers, hub events and logbook, repairs (partial interview, offline, definitions) | 0.1.0 (definitions: 0.1.3; crash: `hub/system` `reset_reason`, 0.1.3; left: 0.3.0) |
 
 Use the newest hub release with the newest integration; the end-to-end
 tests run against the hub release named in `HUB_REF` of
@@ -222,12 +255,14 @@ From then on HACS tracks the installed version.
 | `entity_state` | entity state and attributes (`available: false` → unavailable) |
 | `entity_added` / `entity_updated` / `entity_removed` | entities created at run time / record changes (`orphaned` → unavailable) / registry entry removed |
 | `device_added` / `device_updated` / `device_removed` | device registry |
-| `entity_event` | `event` entity fires `event_type` with the attributes |
+| `entity_event` | `event` entity fires `event_type` with the attributes; bus event `zigbee_rs_hub_action` (device triggers) |
+| device records, `interview_progress`, `resolution_changed` | bus event `zigbee_rs_hub_event` and logbook entries (joined, left, rejoined, removed, interview, definition); repair issues (partial interview, offline, left) |
+| `hub/system` `reset_reason`, `uptime_s` | `hub_crashed` event, repair issue of the crash |
 | HA service call | `entities/command {uid, command, params}` with HA's service and parameter names (`turn_on {brightness, transition, color_temp_kelvin, xy_color, hs_color}`, `set_value {value}`, `select_option {option}`, `press`, `set_temperature`, `set_cover_position`, …); hub errors become `HomeAssistantError` |
 | `network/permit_join` | Permit join button (254 s, Green Power included) and the `permit_join` service |
 | `devices/remove`, `devices/reinterview`, `devices/reconfigure`, `devices/diagnostics` | Delete device, services, device diagnostics |
 | group devices `grp:<id>` and their entities (14.9) | ordinary devices and entities; platform `scene` → HA `scene` (`activate`) |
-| `catalog/status`, `catalog/upload_chunk`, `catalog/commit`, events `definition_needed`, `catalog_*` | `update_catalog` service, automatic checks, **Catalog version** sensor |
+| `catalog/status`, `catalog/upload_chunk`, `catalog/commit`, events `definition_needed`, `catalog_*` | `update_catalog` service, automatic checks, **Catalog version** sensor; `missing` (no shards left, `refused`) and failed runs → repair issues |
 | `network/import/preview`, `network/import` | `import_from_zha` service (ZHA's `zigbee.db` read with `sqlite3` in HA), then ZHA's areas on the new devices; `copy_names_areas` service |
 | `automations/list`, topic `automations` (`automation_added`/`_updated`/`_removed`/`_run`) (API 1.3) | per rule: `switch` `<entry>_automation_<id>` (enabled), `button` `<entry>_automation_<id>_run`; `automations/enable`, `disable`, `run` |
 
@@ -240,10 +275,14 @@ and a fake hub (`tests/fake_hub.py`, an aiohttp WebSocket server speaking
 the hub API) for the config flow, entity creation, pushed state,
 availability, commands on every platform, runtime entities and devices,
 reconnect with resync, the keepalive, services, device removal,
-diagnostics and the catalog client (with a local HTTP mirror; the fake hub
-refuses chunks over 4 KiB). `tests/test_e2e_hubctl.py` runs against the
+diagnostics, the catalog client (with a local HTTP mirror; the fake hub
+refuses chunks over 4 KiB), device triggers, the hub events and the repair
+issues with their fix flows. `tests/test_e2e_hubctl.py` runs against the
 real API server, `hubctl --sim serve` (simulated NCP; with
-`--sim-devices` simulated plugs for the automations test), when `HUBCTL`
+`--sim-devices` simulated plugs for the automations test; with
+`--sim-z2m-devices`, ZRHP only, a remote whose presses fire device triggers,
+a re-interview and a removal for the hub events, and the devices a test
+catalog has no definition for as repair issues), when `HUBCTL`
 names a hubctl binary built from a [zigbee-rs-hub](https://github.com/faronov/zigbee-rs-hub) checkout;
 its catalog test also needs `zdefc` (next to hubctl, or `ZDEFC`) to build and
 sign a test release from the hub's `definitions/examples` (`HUB_REPO`, by

@@ -8,6 +8,29 @@ with the hub firmware, from `integrations/home-assistant` of
 history is kept in this repository). The README's compatibility table lists
 the hub firmware each version needs.
 
+## Unreleased
+
+- **Device triggers** for buttons and remotes: each event type of a
+  device's event entities (from the hub's `event_types`, no per-device code)
+  is a device trigger ("Action: Single press"), subtype = the entity's key.
+  They fire on the new bus event `zigbee_rs_hub_action`, sent for every
+  `entity_event` (also with the event entity disabled). Common event types
+  are translated (English, Russian).
+- **Hub events and logbook**: `zigbee_rs_hub_event` with `type`
+  `device_joined`, `device_added`, `device_left`, `device_rejoined`,
+  `device_removed`, `interview_started`, `interview_complete`,
+  `interview_partial`, `definition_resolved`, `definition_removed`,
+  `definition_missing` and `hub_crashed`, each with a logbook entry on the
+  device. Derived from the hub's device records, `interview_progress`, the
+  catalog status and `hub/system` (the hub has no join, leave or announce
+  events); a device's leave or rejoin at most once a minute.
+- **Repairs**: the hub restarted after a crash (`hub/system`
+  `reset_reason`); a device without a definition (none in the catalog, or
+  refused with the reason); an interview partial for more than 2 hours, with
+  a fix flow that re-interviews the device; a device offline for more than
+  24 hours or gone from the network; a failed catalog update, with a fix
+  flow that runs it again. Issues go when the condition does.
+
 ## 0.6.1 (2026-11-27)
 
 - **Own repository, installed and updated through HACS.** The integration

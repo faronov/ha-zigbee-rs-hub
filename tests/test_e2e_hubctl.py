@@ -19,14 +19,28 @@ import socket
 
 import aiohttp
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_capture_events,
+    async_mock_service,
+)
 
-from custom_components.zigbee_rs_hub.const import CONF_PATH, DOMAIN
+from custom_components.zigbee_rs_hub.const import CONF_PATH, DOMAIN, EVENT_HUB
 from custom_components.zigbee_rs_hub.hub import find_device
+from homeassistant.components.device_automation import (
+    DeviceAutomationType,
+    async_get_device_automations,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
+from homeassistant.setup import async_setup_component
 
 from .fake_hub import ReleaseServer
 
@@ -322,6 +336,169 @@ async def test_hubctl_automations(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
     finally:
         await hub.stop()
+
+
+# `--sim-z2m-devices` (ZRHP backend only): a sensor, a light, a plug and a
+# remote that presses a button every 10 s.
+Z2M_SENSOR = "zb:00158d0001000001"
+Z2M_LIGHT = "zb:00158d0001000002"
+Z2M_PLUG = "zb:00158d0001000003"
+Z2M_REMOTE = "zb:00158d0001000004"
+z2m_devices = pytest.mark.skipif(BACKEND != "zrhp", reason="--sim-z2m-devices is ZRHP only")
+
+
+async def _z2m_entry(hass: HomeAssistant, hub: Hubctl) -> MockConfigEntry:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="hubctl",
+        data={CONF_HOST: "127.0.0.1", CONF_PORT: hub.port, CONF_TOKEN: "e2e", CONF_PATH: "/api"},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _wait(
+        hass,
+        lambda: all(
+            entry.runtime_data.devices.get(d, {}).get("interview") == "complete"
+            for d in (Z2M_SENSOR, Z2M_LIGHT, Z2M_PLUG, Z2M_REMOTE)
+        ),
+    )
+    return entry
+
+
+@z2m_devices
+async def test_hubctl_device_triggers_and_events(hass: HomeAssistant) -> None:
+    """The remote's presses as device triggers; interview and removal events."""
+    hub = Hubctl(_free_port(), "--sim-z2m-devices")
+    await hub.start()
+    try:
+        entry = await _z2m_entry(hass, hub)
+        reg = dr.async_get(hass)
+        remote = find_device(reg, (DOMAIN, Z2M_REMOTE), entry.entry_id)
+        triggers = await async_get_device_automations(
+            hass, DeviceAutomationType.TRIGGER, [remote.id]
+        )
+        ours = {(t["type"], t["subtype"]) for t in triggers[remote.id] if t["domain"] == DOMAIN}
+        presses = {"toggle", "on", "brightness_step_up", "off"}
+        assert {(p, "action") for p in presses} <= ours
+
+        calls = async_mock_service(hass, "test", "automation")
+        assert await async_setup_component(
+            hass,
+            "automation",
+            {
+                "automation": {
+                    "triggers": [
+                        {
+                            "trigger": "device",
+                            "domain": DOMAIN,
+                            "device_id": remote.id,
+                            "type": press,
+                            "subtype": "action",
+                        }
+                        for press in sorted(presses)
+                    ],
+                    "actions": [
+                        {
+                            "action": "test.automation",
+                            "data": {"type": "{{ trigger.event.data.type }}"},
+                        }
+                    ],
+                }
+            },
+        )
+        await _wait(hass, lambda: len(calls) >= 1, timeout=30)
+        assert calls[0].data["type"] in presses
+
+        events = async_capture_events(hass, EVENT_HUB)
+
+        def kinds(device: str) -> list[str]:
+            return [e.data["type"] for e in events if e.data["device"] == device]
+
+        plug = find_device(reg, (DOMAIN, Z2M_PLUG), entry.entry_id)
+        await hass.services.async_call(
+            DOMAIN, "reinterview_device", {"device_id": plug.id}, blocking=True
+        )
+        await _wait(hass, lambda: "interview_complete" in kinds(Z2M_PLUG))
+        assert kinds(Z2M_PLUG)[:2] == ["interview_started", "interview_complete"]
+        assert all(e.data["device_id"] == plug.id for e in events)
+
+        light = find_device(reg, (DOMAIN, Z2M_LIGHT), entry.entry_id)
+        await entry.runtime_data.async_request("devices/remove", device=Z2M_LIGHT, force=True)
+        await _wait(hass, lambda: kinds(Z2M_LIGHT) == ["device_removed"])
+        assert (
+            next(e for e in events if e.data["device"] == Z2M_LIGHT).data["device_id"] == light.id
+        )
+        assert find_device(reg, (DOMAIN, Z2M_LIGHT), entry.entry_id) is None
+
+        await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+    finally:
+        await hub.stop()
+
+
+async def _signed_release(tmp_path: Path) -> tuple[str, dict[str, bytes]]:
+    """A test catalog release of the hub's example definitions: (public key, files)."""
+    assert ZDEFC
+    assert EXAMPLES
+    key = tmp_path / "test.key"
+    await _run(ZDEFC, "bank", "keygen", "-o", str(key))
+    out = await _run(ZDEFC, "bank", "pubkey", "--key", str(key))
+    pubkey = next(line.split()[-1] for line in out.splitlines() if line.startswith("public key"))
+    rel = tmp_path / "release"
+    await _run(
+        ZDEFC, "bank", "build", "-o", str(rel), "--key", str(key), "--date", "20261121",
+        "--serial", "3", "--name", "bank-4m.zdb", str(EXAMPLES),
+    )  # fmt: skip
+    return pubkey, {p.name: p.read_bytes() for p in rel.iterdir() if p.is_file()}
+
+
+@z2m_devices
+@pytest.mark.skipif(not ZDEFC or not Path(ZDEFC).exists(), reason="no zdefc binary")
+@pytest.mark.skipif(not EXAMPLES or not EXAMPLES.is_dir(), reason="no hub definitions (HUB_REPO)")
+async def test_hubctl_definition_repairs(hass: HomeAssistant, tmp_path: Path) -> None:
+    """A failed catalog update, then the devices the catalog has nothing for."""
+    pubkey, files = await _signed_release(tmp_path)
+    release = ReleaseServer(files)
+    await release.start()
+    hub = Hubctl(_free_port(), "--sim-z2m-devices", "--catalog-key", pubkey)
+    await hub.start()
+    try:
+        entry = await _z2m_entry(hass, hub)
+        events = async_capture_events(hass, EVENT_HUB)
+        issues = ir.async_get(hass)
+
+        def issue(kind: str, device: str | None = None) -> ir.IssueEntry | None:
+            ident = f"{kind}_{entry.entry_id}"
+            if device:
+                ident += "_" + device.replace(":", "_")
+            return issues.async_get_issue(DOMAIN, ident)
+
+        # Nothing listens on port 1.
+        await entry.runtime_data.async_request(
+            "catalog/config", base_url="http://127.0.0.1:1/latest", auto_fetch=False
+        )
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(DOMAIN, "update_catalog", {}, blocking=True)
+        assert issue("catalog_failed") is not None
+
+        await entry.runtime_data.async_request("catalog/config", base_url=release.base_url)
+        await hass.services.async_call(DOMAIN, "update_catalog", {}, blocking=True)
+        await hass.async_block_till_done()
+        assert issue("catalog_failed") is None
+        # The example definitions have the plug only.
+        for device in (Z2M_SENSOR, Z2M_LIGHT, Z2M_REMOTE):
+            assert issue("no_definition", device) is not None, device
+        assert issue("no_definition", Z2M_PLUG) is None
+        missing = {e.data["device"] for e in events if e.data["type"] == "definition_missing"}
+        assert missing == {Z2M_SENSOR, Z2M_LIGHT, Z2M_REMOTE}
+
+        await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert issue("no_definition", Z2M_SENSOR) is None
+    finally:
+        await hub.stop()
+        await release.stop()
 
 
 async def test_hubctl_import_from_zha(hass: HomeAssistant, hubctl: Hubctl, tmp_path: Path) -> None:

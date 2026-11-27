@@ -46,6 +46,7 @@ from .const import (
     SERVICE_UPDATE_CATALOG,
 )
 from .hub import ZigbeeRsHub
+from .monitor import async_delete_entry_issues
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -223,6 +224,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZigbeeRsHubConfigEntry) 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     for cancel in hub.catalog.async_start():
         entry.async_on_unload(cancel)
+    for cancel in hub.monitor.async_start():
+        entry.async_on_unload(cancel)
 
     @callback
     def time_zone_changed(_event: Event) -> None:
@@ -257,6 +260,11 @@ def _adopt_coordinator_ieee(
 async def async_unload_entry(hass: HomeAssistant, entry: ZigbeeRsHubConfigEntry) -> bool:
     """Unload the platforms and close the connection."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """The entry is deleted: its repair issues go too (the crash issue persists)."""
+    async_delete_entry_issues(hass, entry.entry_id)
 
 
 async def async_remove_config_entry_device(
