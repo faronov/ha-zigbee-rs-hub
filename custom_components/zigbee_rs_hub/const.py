@@ -116,6 +116,20 @@ TRANSLATED_KEYS: Final = frozenset(
     }
 )
 
+# Hub events on HA's bus (monitor.py): device life cycle (`type`: joined,
+# left, removed, interview, definition…; logbook entries) and button/remote
+# actions of event entities (device triggers, device_trigger.py).
+EVENT_HUB: Final = f"{DOMAIN}_event"
+EVENT_ACTION: Final = f"{DOMAIN}_action"
+# A device's leave or rejoin event at most once in this time.
+EVENT_DEDUPE: Final = timedelta(seconds=60)
+# Repair issues: how long a condition lasts before it is reported, and how
+# often the time-based ones are checked.
+REPAIR_INTERVIEW_PARTIAL: Final = timedelta(hours=2)
+REPAIR_DEVICE_OFFLINE: Final = timedelta(hours=24)
+REPAIR_DEVICE_LEFT: Final = timedelta(minutes=10)
+REPAIR_CHECK_INTERVAL: Final = timedelta(minutes=5)
+
 TO_REDACT: Final = {
     "token",
     "key",

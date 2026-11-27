@@ -206,6 +206,135 @@
       }
     }
   },
+  "device_automation": {
+    "trigger_type": {
+      "on": "{subtype}: On",
+      "off": "{subtype}: Off",
+      "toggle": "{subtype}: Toggle",
+      "brightness_move_up": "{subtype}: Brightness up (held)",
+      "brightness_move_down": "{subtype}: Brightness down (held)",
+      "brightness_step_up": "{subtype}: Brightness up",
+      "brightness_step_down": "{subtype}: Brightness down",
+      "brightness_stop": "{subtype}: Brightness stop",
+      "brightness_move_to_level": "{subtype}: Move to level",
+      "color_temperature_move": "{subtype}: Move to color temperature",
+      "color_temperature_move_up": "{subtype}: Color temperature up (held)",
+      "color_temperature_move_down": "{subtype}: Color temperature down (held)",
+      "color_temperature_move_stop": "{subtype}: Color temperature stop",
+      "color_temperature_step_up": "{subtype}: Color temperature up",
+      "color_temperature_step_down": "{subtype}: Color temperature down",
+      "recall_scene": "{subtype}: Recall scene",
+      "open": "{subtype}: Open",
+      "close": "{subtype}: Close",
+      "stop": "{subtype}: Stop",
+      "arm_disarm": "{subtype}: Disarm",
+      "arm_day": "{subtype}: Arm (day zones)",
+      "arm_night": "{subtype}: Arm (night zones)",
+      "arm_all": "{subtype}: Arm (all zones)",
+      "emergency": "{subtype}: Emergency",
+      "fire": "{subtype}: Fire",
+      "panic": "{subtype}: Panic",
+      "press": "{subtype}: Pressed",
+      "release": "{subtype}: Released",
+      "hold": "{subtype}: Held",
+      "single": "{subtype}: Single press",
+      "double": "{subtype}: Double press",
+      "triple": "{subtype}: Triple press",
+      "quadruple": "{subtype}: Quadruple press",
+      "many": "{subtype}: Many presses",
+      "long": "{subtype}: Long press",
+      "shake": "{subtype}: Shaken",
+      "tap": "{subtype}: Tapped",
+      "on_press": "{subtype}: On pressed",
+      "on_hold": "{subtype}: On held",
+      "on_press_release": "{subtype}: On released",
+      "on_hold_release": "{subtype}: On released after hold",
+      "off_press": "{subtype}: Off pressed",
+      "off_hold": "{subtype}: Off held",
+      "off_press_release": "{subtype}: Off released",
+      "off_hold_release": "{subtype}: Off released after hold",
+      "up_press": "{subtype}: Up pressed",
+      "up_hold": "{subtype}: Up held",
+      "up_press_release": "{subtype}: Up released",
+      "up_hold_release": "{subtype}: Up released after hold",
+      "down_press": "{subtype}: Down pressed",
+      "down_hold": "{subtype}: Down held",
+      "down_press_release": "{subtype}: Down released",
+      "down_hold_release": "{subtype}: Down released after hold",
+      "arrow_left_click": "{subtype}: Left arrow pressed",
+      "arrow_left_hold": "{subtype}: Left arrow held",
+      "arrow_left_release": "{subtype}: Left arrow released",
+      "arrow_right_click": "{subtype}: Right arrow pressed",
+      "arrow_right_hold": "{subtype}: Right arrow held",
+      "arrow_right_release": "{subtype}: Right arrow released",
+      "brightness_up_click": "{subtype}: Brightness up pressed",
+      "brightness_up_hold": "{subtype}: Brightness up held",
+      "brightness_up_release": "{subtype}: Brightness up released",
+      "brightness_down_click": "{subtype}: Brightness down pressed",
+      "brightness_down_hold": "{subtype}: Brightness down held",
+      "brightness_down_release": "{subtype}: Brightness down released"
+    },
+    "trigger_subtype": {
+      "action": "Action",
+      "lock_event": "Lock",
+      "rocker_a_top": "Rocker A top",
+      "rocker_a_bottom": "Rocker A bottom",
+      "rocker_b_top": "Rocker B top",
+      "rocker_b_bottom": "Rocker B bottom"
+    }
+  },
+  "issues": {
+    "hub_crash": {
+      "title": "{hub} restarted after a crash",
+      "description": "The zigbee-rs hub {hub} restarted after a {reason}; it booted at {boot}. Devices and settings are kept, but a crash is a firmware bug or a power problem (a brownout: check the power supply). The hub's console command `info` shows the last panic record: report it with the hub's diagnostics.\n\nThis issue goes when the hub restarts cleanly. Ignore it to hide it until the next crash."
+    },
+    "catalog_failed": {
+      "title": "The definitions catalog update failed on {hub}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Retry the catalog update",
+            "description": "The last update of the definitions catalog of {hub} failed:\n\n{error}\n\nCheck that Home Assistant can reach the catalog mirror set on the hub, then submit to run the update again."
+          }
+        },
+        "error": {
+          "failed": "The update failed again: {error}",
+          "not_connected": "The hub is not connected."
+        }
+      }
+    },
+    "no_definition": {
+      "title": "Devices without a device definition on {hub}",
+      "description": "The definitions catalog of {hub} has nothing for these devices ({count}):\n\n{devices}\n\nThey run on the hub's generic Zigbee support only, so device-specific entities and settings may be missing. If something is missing, ask for a definition (attach the device's diagnostics) or upload your own in the hub's web UI.\n\nA device leaves this list once it has a definition."
+    },
+    "definition_refused": {
+      "title": "The definition of {name} needs newer hub firmware",
+      "description": "The definitions catalog of {hub} has a definition for {name} ({model}) that this hub firmware cannot run: {reason}. Until the hub's firmware is updated the device runs on generic Zigbee support only.\n\nThis issue goes once the device has a definition it can run."
+    },
+    "interview_partial": {
+      "title": "The interview of {name} is incomplete",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Re-interview {name}",
+            "description": "For more than {hours} hours {name} has not answered all of the hub's interview requests, so some of its entities may be missing. The hub continues the interview when the device rejoins.\n\nBattery devices sleep: wake the device first (press its button, or as its manual says for pairing), then submit at once to interview it again."
+          }
+        },
+        "error": {
+          "failed": "The re-interview failed: {error}",
+          "not_connected": "The hub is not connected."
+        }
+      }
+    },
+    "device_offline": {
+      "title": "{name} is offline",
+      "description": "The hub {hub} has not heard from {name} for more than {hours} hours (last seen: {last_seen}). Check its power or battery and the distance to the nearest router; a device that was reset has to be paired again.\n\nThis issue goes when the device is heard again or removed."
+    },
+    "device_left": {
+      "title": "{name} left the network",
+      "description": "{name} left the Zigbee network of {hub} and has not come back. Pair it again (permit join, then reset the device), or delete the device if it is gone for good.\n\nThis issue goes when the device rejoins or is removed."
+    }
+  },
   "exceptions": {
     "unknown_device": {
       "message": "Device {device_id} is not a device of a loaded zigbee-rs hub."

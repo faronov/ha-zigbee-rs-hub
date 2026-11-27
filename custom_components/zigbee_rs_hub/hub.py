@@ -23,6 +23,7 @@ from . import const
 from .api import CannotConnect, HubApiError, HubClient, HubError, InvalidAuth, hub_url
 from .catalog import CatalogUpdater
 from .const import COMMAND_TIMEOUT, CONF_PATH, CONF_SYNC_TIME_ZONE, DEFAULT_PATH, DOMAIN, TOPICS
+from .monitor import HubMonitor
 from .ota import OtaIndex, OtaStreams
 from .time_zone import posix_tz, zone_name
 
@@ -143,6 +144,8 @@ class ZigbeeRsHub:
         self.ota_streams = OtaStreams(self, hass.config.path(".storage", f"{DOMAIN}_ota"))
         self._ota_adder: Callable[[list[str]], None] | None = None
         self._ota_created: set[str] = set()
+        # Life-cycle events on HA's bus and the repair issues (monitor.py).
+        self.monitor = HubMonitor(hass, self)
 
     # Identity
 
@@ -232,6 +235,9 @@ class ZigbeeRsHub:
             )
         self._update_hub_device()
         await self.async_sync_time_zone()
+        self.entry.async_create_background_task(
+            self.hass, self.monitor.async_connected(), f"{DOMAIN} hub/system"
+        )
         _LOGGER.debug(
             "Connected to %s: %d devices, %d entities",
             self.url,
@@ -351,6 +357,7 @@ class ZigbeeRsHub:
                 rule["last_result"] = event.get("result")
                 rule["last_run"] = event.get("time")
                 self._notify(automation_key(rule["id"]))
+        self.monitor.on_event(event)
 
     @callback
     def _apply_snapshot(self, snap: dict[str, Any]) -> None:
