@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ZigbeeRsHubConfigEntry
 from .entity import ZigbeeRsEntity, capability, enum_or_none, setup_platform
-from .settings_entities import MqttPortNumber, TxPowerNumber, add_when_supported, has_mqtt
+from .settings_entities import TxPowerNumber, add_when_supported
 
 
 async def async_setup_entry(
@@ -18,14 +18,13 @@ async def async_setup_entry(
     entry: ZigbeeRsHubConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Numbers of the hub's devices; the hub's TX power and MQTT port."""
+    """Numbers of the hub's devices; the hub's TX power."""
     add_when_supported(
         entry,
         async_add_entities,
         lambda hub: hub.settings.supports_tx_power,
         lambda hub: [TxPowerNumber(hub)],
     )
-    add_when_supported(entry, async_add_entities, has_mqtt, lambda hub: [MqttPortNumber(hub)])
     setup_platform(entry, "number", async_add_entities, ZigbeeRsNumber)
 
 

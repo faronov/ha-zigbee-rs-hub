@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import callback
+from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -184,7 +185,7 @@ class HubEntity(Entity):
 
 
 class HubSettingEntity(HubEntity):
-    """A setting of the hub (a config entity on the hub device)."""
+    """A setting of the hub (a config entity on the hub device), for administrators."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
@@ -192,6 +193,20 @@ class HubSettingEntity(HubEntity):
         """Also follow the hub's settings."""
         await super().async_added_to_hass()
         self.async_on_remove(self.hub.settings.add_listener(self._hub_update))
+
+    async def async_check_admin(self) -> None:
+        """Refuse a change a user who is not an administrator asked for.
+
+        HA lets every user control entities; the hub's radio and bridge
+        settings are an administrator's (automations and scripts, without a
+        user, may change them).
+        """
+        context = self._context
+        if context is None or context.user_id is None:
+            return
+        user = await self.hass.auth.async_get_user(context.user_id)
+        if user is None or not user.is_admin:
+            raise Unauthorized(context=context, user_id=context.user_id, entity_id=self.entity_id)
 
 
 def setup_automations(

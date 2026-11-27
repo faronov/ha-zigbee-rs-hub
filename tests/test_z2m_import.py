@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, MockUser
@@ -395,7 +395,7 @@ async def test_import_refused_while_z2m_runs(
         DOMAIN, "import_from_z2m", data, blocking=True, return_response=True
     )
     bridge("zigbee2mqtt_bridge_0x00124b00c0ffee01", "Zigbee2MQTT", "on")
-    with pytest.raises(ServiceValidationError, match=r"Zigbee2MQTT is running.*bridge"):
+    with pytest.raises(ServiceValidationError, match=r"Zigbee2MQTT may be running.*bridge"):
         await hass.services.async_call(
             DOMAIN, "import_from_z2m", data, blocking=True, return_response=True
         )
@@ -405,24 +405,174 @@ async def test_import_refused_while_z2m_runs(
     )
 
 
+ADDON = "45df7312_zigbee2mqtt"
+
+
+def supervisor(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    addons_list: list | None = None,
+    supervisor_info: dict | None = None,
+    addons_info: dict | None = None,
+    new_api: bool = True,
+) -> None:
+    """A Supervisor installation; `new_api`: HA 2026.4+ with `get_addons_list`."""
+    from homeassistant.components import hassio
+    from homeassistant.components.hassio import HassioNotReadyError
+
+    def value(v):
+        def get(_hass):
+            if v is None:
+                raise HassioNotReadyError
+            return v
+
+        return get
+
+    monkeypatch.setattr(z2m_import, "is_hassio", lambda _hass: True)
+    if new_api:
+        monkeypatch.setattr(hassio, "get_addons_list", value(addons_list))
+    else:
+        monkeypatch.delattr(hassio, "get_addons_list")
+    monkeypatch.setattr(hassio, "get_supervisor_info", value(supervisor_info))
+    monkeypatch.setattr(hassio, "get_addons_info", value(addons_info))
+
+
+async def _apply(hass: HomeAssistant, data_dir: str) -> dict:
+    return await hass.services.async_call(
+        DOMAIN,
+        "import_from_z2m",
+        {"path": data_dir, "apply": True, "force": True},
+        blocking=True,
+        return_response=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # HA 2026.4 and newer.
+        {"addons_list": [{"slug": ADDON, "name": "Zigbee2MQTT", "state": "started"}]},
+        # Older: the Supervisor info's add-on list.
+        {
+            "new_api": False,
+            "supervisor_info": {
+                "addons": [{"slug": ADDON, "name": "Zigbee2MQTT", "state": "started"}]
+            },
+        },
+        # Older, without the Supervisor info: the add-on infos (HA 2025.1).
+        {
+            "new_api": False,
+            "addons_info": {ADDON: {"name": "Zigbee2MQTT", "state": "started", "options": {}}},
+        },
+    ],
+)
 async def test_import_refused_while_the_addon_runs(
-    hass: HomeAssistant, fake_hub: FakeHub, setup_entry: MockConfigEntry, tmp_path: Path
+    hass: HomeAssistant,
+    fake_hub: FakeHub,
+    setup_entry: MockConfigEntry,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict,
 ) -> None:
     data_dir = str(make_dir(tmp_path / "z2m"))
-    addons = [{"slug": "45df7312_zigbee2mqtt", "name": "Zigbee2MQTT", "state": "started"}]
-    with (
-        patch.object(z2m_import, "is_hassio", return_value=True),
-        patch("homeassistant.components.hassio.get_addons_list", return_value=addons),
-        pytest.raises(ServiceValidationError, match="Zigbee2MQTT add-on is running"),
-    ):
-        await hass.services.async_call(
-            DOMAIN,
-            "import_from_z2m",
-            {"path": data_dir, "apply": True},
-            blocking=True,
-            return_response=True,
-        )
+    supervisor(monkeypatch, **kwargs)
+    with pytest.raises(ServiceValidationError, match="Zigbee2MQTT add-on is running"):
+        await _apply(hass, data_dir)
     assert not fake_hub.calls("network/import")
+
+
+@pytest.mark.parametrize("new_api", [True, False])
+async def test_import_refused_when_addon_states_are_unknown(
+    hass: HomeAssistant,
+    fake_hub: FakeHub,
+    setup_entry: MockConfigEntry,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    new_api: bool,
+) -> None:
+    """A Supervisor installation whose add-on states cannot be read: refused."""
+    data_dir = str(make_dir(tmp_path / "z2m"))
+    supervisor(monkeypatch, new_api=new_api)
+    with pytest.raises(ServiceValidationError, match="cannot be read"):
+        await _apply(hass, data_dir)
+    assert not fake_hub.calls("network/import")
+    # A preview is fine.
+    await hass.services.async_call(
+        DOMAIN, "import_from_z2m", {"path": data_dir}, blocking=True, return_response=True
+    )
+
+
+@pytest.mark.parametrize("new_api", [True, False])
+async def test_import_with_the_addon_stopped(
+    hass: HomeAssistant,
+    fake_hub: FakeHub,
+    setup_entry: MockConfigEntry,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    new_api: bool,
+) -> None:
+    data_dir = str(make_dir(tmp_path / "z2m"))
+    stopped = [{"slug": ADDON, "name": "Zigbee2MQTT", "state": "stopped"}]
+    supervisor(
+        monkeypatch,
+        new_api=new_api,
+        addons_list=stopped,
+        supervisor_info={"addons": stopped},
+        addons_info={ADDON: {"name": "Zigbee2MQTT", "state": "started", "options": {}}},
+    )
+    result = await _apply(hass, data_dir)
+    assert result["result"]["network"]["action"] == "restored"
+
+
+async def test_data_directory_of_the_addon(
+    hass: HomeAssistant, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hass.config.config_dir = str(tmp_path / "config")
+    monkeypatch.setattr(
+        z2m_import, "DEFAULT_DIRS", ("zigbee2mqtt", str(tmp_path / "share" / "zigbee2mqtt"))
+    )
+    # Data in both default places (the add-on moved): its data_path decides.
+    make_dir(tmp_path / "config" / "zigbee2mqtt")
+    make_dir(tmp_path / "share" / "zigbee2mqtt")
+    info = {
+        ADDON: {
+            "name": "Zigbee2MQTT",
+            "state": "stopped",
+            "options": {"data_path": "/config/zigbee2mqtt"},
+        }
+    }
+    supervisor(monkeypatch, new_api=False, addons_info=info)
+    assert await z2m_import.async_data_dir(hass, None) == str(tmp_path / "config" / "zigbee2mqtt")
+    info[ADDON]["options"]["data_path"] = "/share/z2m"
+    assert await z2m_import.async_data_dir(hass, None) == "/share/z2m"
+    info[ADDON]["options"]["data_path"] = "/addon_config/zigbee2mqtt"
+    with pytest.raises(ServiceValidationError, match="cannot read"):
+        await z2m_import.async_data_dir(hass, None)
+    # A path given wins.
+    assert await z2m_import.async_data_dir(hass, "/data") == "/data"
+
+
+async def test_default_data_directories(
+    hass: HomeAssistant, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hass.config.config_dir = str(tmp_path / "config")
+    share = tmp_path / "share" / "zigbee2mqtt"
+    monkeypatch.setattr(z2m_import, "DEFAULT_DIRS", ("zigbee2mqtt", str(share)))
+    with pytest.raises(ServiceValidationError, match="no Zigbee2MQTT database"):
+        await z2m_import.async_data_dir(hass, None)
+    make_dir(share)
+    assert await z2m_import.async_data_dir(hass, None) == str(share)
+    # Both: refused, the newer one first.
+    current = make_dir(tmp_path / "config" / "zigbee2mqtt")
+    os.utime(share / "database.db", (1_700_000_000, 1_700_000_000))
+    os.utime(share / "coordinator_backup.json", (1_700_000_000, 1_700_000_000))
+    with pytest.raises(ServiceValidationError, match="more than one place") as err:
+        await z2m_import.async_data_dir(hass, None)
+    assert str(err.value).index(str(current)) < str(err.value).index(str(share))
+    # No Zigbee2MQTT add-on on a Supervisor installation: the same.
+    supervisor(monkeypatch, addons_list=[])
+    with pytest.raises(ServiceValidationError, match="more than one place"):
+        await z2m_import.async_data_dir(hass, None)
 
 
 async def test_import_needs_files_and_an_admin(
@@ -455,11 +605,3 @@ async def test_import_needs_files_and_an_admin(
             return_response=True,
             context=Context(user_id=hass_read_only_user.id),
         )
-
-
-async def test_default_data_directory(hass: HomeAssistant, tmp_path: Path) -> None:
-    hass.config.config_dir = str(tmp_path)
-    assert z2m_import.data_dir(hass, None) == str(tmp_path / "zigbee2mqtt")
-    make_dir(tmp_path / "zigbee2mqtt")
-    assert z2m_import.data_dir(hass, None) == str(tmp_path / "zigbee2mqtt")
-    assert z2m_import.data_dir(hass, "/data") == "/data"

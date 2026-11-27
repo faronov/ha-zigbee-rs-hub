@@ -10,13 +10,23 @@ import voluptuous as vol
 
 from homeassistant.config_entries import (
     ConfigEntry,
+    ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TOKEN
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import CannotConnect, HubClient, HubError, InvalidAuth, hub_url
 from .const import CONF_PATH, CONF_SYNC_TIME_ZONE, DEFAULT_PATH, DEFAULT_PORT, DOMAIN
@@ -140,15 +150,103 @@ class ZigbeeRsHubConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
+# MQTT bridge fields of the options (mqtt/config/set); the password is
+# write-only: never read back, never stored in the entry.
+MQTT_FIELDS = ("enabled", "host", "port", "username", "base_topic")
+MQTT_PASSWORD = "password"
+MQTT_CLEAR_PASSWORD = "clear_password"
+
+
 class ZigbeeRsHubOptionsFlow(OptionsFlow):
-    """Whether the hub takes Home Assistant's time zone."""
+    """The hub's time zone from Home Assistant; the hub's MQTT bridge.
+
+    Options flows are for administrators and their input is not fired on
+    the event bus: the broker's address and credentials go to the hub
+    from here, not through entities.
+    """
+
+    def _mqtt_hub(self) -> Any:
+        """The loaded hub, when it has the MQTT bridge."""
+        entry = self.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            return None
+        hub = entry.runtime_data
+        return hub if hub.settings.supports_mqtt and hub.settings.mqtt is not None else None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """The options form."""
+        """A menu with the MQTT bridge, else the time zone form."""
+        if user_input is None and self._mqtt_hub() is not None:
+            return self.async_show_menu(step_id="init", menu_options=["time_zone", "mqtt"])
+        return await self._time_zone("init", user_input)
+
+    async def async_step_time_zone(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Whether the hub takes Home Assistant's time zone."""
+        return await self._time_zone("time_zone", user_input)
+
+    async def _time_zone(self, step_id: str, user_input: dict[str, Any] | None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            return self.async_create_entry(data={**self.config_entry.options, **user_input})
         current = self.config_entry.options.get(CONF_SYNC_TIME_ZONE, False)
         return self.async_show_form(
-            step_id="init",
+            step_id=step_id,
             data_schema=vol.Schema({vol.Required(CONF_SYNC_TIME_ZONE, default=current): bool}),
+        )
+
+    async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Broker, credentials and base topic of the hub's MQTT bridge."""
+        hub = self._mqtt_hub()
+        if hub is None:
+            return self.async_abort(reason="not_loaded")
+        current: dict[str, Any] = hub.settings.mqtt
+        errors: dict[str, str] = {}
+        placeholders = {"error": ""}
+        if user_input is not None:
+            user_input["port"] = int(user_input["port"])
+            changes = {
+                k: user_input[k]
+                for k in MQTT_FIELDS
+                if k in user_input and user_input[k] != current.get(k)
+            }
+            password = user_input.get(MQTT_PASSWORD) or ""
+            if password:
+                changes[MQTT_PASSWORD] = password
+            elif user_input.get(MQTT_CLEAR_PASSWORD) or (
+                # The hub keeps a password the request leaves out: it must not
+                # go to another broker or with another user name.
+                current.get("password_set") and ("host" in changes or "username" in changes)
+            ):
+                changes[MQTT_PASSWORD] = ""
+            try:
+                if changes:
+                    await hub.settings.async_set_mqtt(**changes)
+            except HomeAssistantError as err:
+                errors["base"] = "mqtt_rejected"
+                placeholders["error"] = str(err)
+            else:
+                return self.async_create_entry(data=dict(self.config_entry.options))
+        values = {**current, **(user_input or {})}
+        schema = vol.Schema(
+            {
+                vol.Required("enabled", default=bool(values.get("enabled"))): bool,
+                vol.Optional("host", default=str(values.get("host") or "")): TextSelector(),
+                vol.Required("port", default=int(values.get("port") or 1883)): NumberSelector(
+                    NumberSelectorConfig(min=1, max=65535, step=1, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Optional("username", default=str(values.get("username") or "")): TextSelector(),
+                vol.Optional(MQTT_PASSWORD): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Optional(MQTT_CLEAR_PASSWORD, default=False): bool,
+                vol.Required(
+                    "base_topic", default=str(values.get("base_topic") or "zigbee2mqtt")
+                ): TextSelector(),
+            }
+        )
+        return self.async_show_form(
+            step_id="mqtt",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders=placeholders,
         )

@@ -122,23 +122,32 @@ async def test_e2e_health_and_settings(hass: HomeAssistant, sim_devices: Hubctl)
     assert hass.states.get(status).state == "disabled"
     with pytest.raises(HomeAssistantError, match="host"):
         await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
-    await hass.services.async_call(
-        "text",
-        "set_value",
-        {ATTR_ENTITY_ID: _hub_entity(hass, entry, "text", "mqtt_host"), "value": "127.0.0.1"},
-        blocking=True,
+    # Broker and credentials in the options flow (the hub keeps the password).
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": "mqtt"}
     )
-    await hass.services.async_call(
-        "number",
-        "set_value",
-        {ATTR_ENTITY_ID: _hub_entity(hass, entry, "number", "mqtt_port"), "value": _free_port()},
-        blocking=True,
+    port = _free_port()
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"],
+        {
+            "enabled": False,
+            "host": "127.0.0.1",
+            "port": port,
+            "username": "ha",
+            "password": "pw",
+            "base_topic": "zigbee2mqtt",
+        },
     )
-    password = _hub_entity(hass, entry, "text", "mqtt_password")
-    await hass.services.async_call(
-        "text", "set_value", {ATTR_ENTITY_ID: password, "value": "pw"}, blocking=True
+    assert flow["type"] == "create_entry", flow
+    cfg = await hub.async_request("mqtt/config/get")
+    assert (cfg["host"], cfg["port"], cfg["username"], cfg["password_set"]) == (
+        "127.0.0.1",
+        port,
+        "ha",
+        True,
     )
-    assert hass.states.get(password).attributes["password_set"] is True
+    assert "password" not in cfg
     await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
     assert hass.states.get(switch).state == STATE_ON
     for _ in range(50):

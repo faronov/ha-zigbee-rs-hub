@@ -10,14 +10,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ZigbeeRsHubConfigEntry
 from .entity import ZigbeeRsEntity, capability, enum_or_none, setup_platform
-from .settings_entities import (
-    MqttBaseTopicText,
-    MqttHostText,
-    MqttPasswordText,
-    MqttUsernameText,
-    add_when_supported,
-    has_mqtt,
-)
 
 
 async def async_setup_entry(
@@ -25,18 +17,7 @@ async def async_setup_entry(
     entry: ZigbeeRsHubConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Texts of the hub's devices; the hub's MQTT settings."""
-    add_when_supported(
-        entry,
-        async_add_entities,
-        has_mqtt,
-        lambda hub: [
-            MqttHostText(hub),
-            MqttUsernameText(hub),
-            MqttPasswordText(hub),
-            MqttBaseTopicText(hub),
-        ],
-    )
+    """Texts of the hub's devices."""
     setup_platform(entry, "text", async_add_entities, ZigbeeRsText)
 
 

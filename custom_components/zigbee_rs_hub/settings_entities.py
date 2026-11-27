@@ -9,7 +9,6 @@ from homeassistant.components import persistent_notification
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.components.text import TextEntity, TextMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.core import HomeAssistant, callback
@@ -66,14 +65,12 @@ def has_mqtt(hub: ZigbeeRsHub) -> bool:
     return hub.settings.supports_mqtt and hub.settings.mqtt is not None
 
 
-class MqttEntity(HubSettingEntity):
-    """A field of the hub's MQTT bridge settings (mqtt/config/get|set)."""
-
-    field = ""
+class MqttEnabledSwitch(HubSettingEntity, SwitchEntity):
+    """The MQTT bridge on or off; its broker and credentials are set in the entry's options."""
 
     def __init__(self, hub: ZigbeeRsHub) -> None:
-        """Setting `field` of `hub`."""
-        super().__init__(hub, f"mqtt_{self.field}")
+        """MQTT bridge switch of `hub`."""
+        super().__init__(hub, "mqtt_enabled")
 
     @property
     def available(self) -> bool:
@@ -81,107 +78,20 @@ class MqttEntity(HubSettingEntity):
         return self.hub.connected and self.hub.settings.mqtt is not None
 
     @property
-    def mqtt_value(self) -> Any:
-        """The field's value."""
-        return (self.hub.settings.mqtt or {}).get(self.field)
-
-    async def set_mqtt(self, value: Any) -> None:
-        """`mqtt/config/set` with this field."""
-        await self.hub.settings.async_set_mqtt(**{self.field: value})
-
-
-class MqttEnabledSwitch(MqttEntity, SwitchEntity):
-    """The MQTT bridge on or off (needs a broker host)."""
-
-    field = "enabled"
-
-    @property
     def is_on(self) -> bool | None:
         """Enabled on the hub."""
-        value = self.mqtt_value
+        value = (self.hub.settings.mqtt or {}).get("enabled")
         return value if isinstance(value, bool) else None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the bridge."""
-        await self.set_mqtt(True)
+        """Enable the bridge (it connects to the broker stored on the hub)."""
+        await self.async_check_admin()
+        await self.hub.settings.async_set_mqtt(enabled=True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the bridge."""
-        await self.set_mqtt(False)
-
-
-class MqttText(MqttEntity, TextEntity):
-    """A text field of the MQTT settings."""
-
-    _attr_native_min = 0
-    _attr_native_max = 64
-
-    @property
-    def native_value(self) -> str | None:
-        """The hub's value."""
-        value = self.mqtt_value
-        return value if isinstance(value, str) else None
-
-    async def async_set_value(self, value: str) -> None:
-        """Store it on the hub."""
-        await self.set_mqtt(value)
-
-
-class MqttHostText(MqttText):
-    """The broker: a host name or address (plain MQTT over TCP)."""
-
-    field = "host"
-    _attr_native_max = 128
-
-
-class MqttUsernameText(MqttText):
-    """User name (empty: anonymous)."""
-
-    field = "username"
-
-
-class MqttBaseTopicText(MqttText):
-    """Base topic (`zigbee2mqtt`)."""
-
-    field = "base_topic"
-    _attr_native_min = 1
-
-
-class MqttPasswordText(MqttText):
-    """The broker password: write-only, the hub never returns it."""
-
-    field = "password"
-    _attr_mode = TextMode.PASSWORD
-
-    @property
-    def native_value(self) -> str | None:
-        """Never known."""
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Whether the hub stores one."""
-        return {"password_set": (self.hub.settings.mqtt or {}).get("password_set")}
-
-
-class MqttPortNumber(MqttEntity, NumberEntity):
-    """The broker's TCP port."""
-
-    field = "port"
-    _attr_native_min_value = 1
-    _attr_native_max_value = 65535
-    _attr_native_step = 1
-    _attr_mode = NumberMode.BOX
-
-    @property
-    def native_value(self) -> int | None:
-        """The hub's value."""
-        value = self.mqtt_value
-        return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Store it on the hub."""
-        await self.set_mqtt(int(value))
+        await self.async_check_admin()
+        await self.hub.settings.async_set_mqtt(enabled=False)
 
 
 class TxPowerNumber(HubSettingEntity, NumberEntity):
@@ -218,6 +128,7 @@ class TxPowerNumber(HubSettingEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """`network/set_tx_power`."""
+        await self.async_check_admin()
         await self.hub.settings.async_set_tx_power(int(value))
 
 
@@ -249,6 +160,7 @@ class NcpLogLevelSelect(HubSettingEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """`network/ncp_log {level}`."""
+        await self.async_check_admin()
         await self.hub.settings.async_set_ncp_log(NCP_LOG_LEVELS.index(option))
 
 
@@ -281,6 +193,7 @@ class ChannelChangeSelect(HubSettingEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Stage the channel and say how to apply it."""
+        await self.async_check_admin()
         channel = int(option)
         if channel == self.hub.network.get("channel"):
             self.hub.settings.stage_channel(None)

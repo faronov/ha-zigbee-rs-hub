@@ -29,6 +29,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.hassio import is_hassio
+from homeassistant.util import dt as dt_util
 
 from . import migrate
 from .const import DOMAIN
@@ -45,8 +46,10 @@ from .zha_import import (
 _LOGGER = logging.getLogger(__name__)
 
 NOTIFICATION = "zigbee_rs_hub_migration_z2m"
-# The Zigbee2MQTT add-on's data directory (`data_path`), older and newer.
-DEFAULT_DIRS = ("/share/zigbee2mqtt", "zigbee2mqtt")
+# The Zigbee2MQTT add-on's `data_path` default (HA's configuration
+# directory is the add-on's `/config`), and its older one.
+ADDON_DATA_PATH = "/config/zigbee2mqtt"
+DEFAULT_DIRS = ("zigbee2mqtt", "/share/zigbee2mqtt")
 # Supervisor add-on slugs (after the repository prefix) of Zigbee2MQTT.
 ADDON_SLUGS = frozenset({"zigbee2mqtt", "zigbee2mqtt_edge"})
 
@@ -340,37 +343,151 @@ def read_z2m(path: str) -> tuple[dict[str, Any], int]:
     )
 
 
-def data_dir(hass: HomeAssistant, path: str | None) -> str:
-    """The data directory given, else the first default one with a `database.db`."""
+def supervisor_addons(hass: HomeAssistant) -> list[dict[str, Any]] | None:
+    """The Supervisor's add-ons (`slug`, `name`, `state`, `options`); `None` when unreadable.
+
+    The states come from `get_addons_list` (HA 2026.4 and newer), else from
+    the Supervisor info's add-on list (refreshed every few minutes), else
+    from the add-on infos; the options (`data_path`) from the add-on infos.
+    """
+    try:
+        from homeassistant.components import hassio  # noqa: PLC0415
+    except ImportError:
+        return None
+
+    def read(name: str) -> Any:
+        getter = getattr(hassio, name, None)
+        if getter is None:
+            return None
+        try:
+            return getter(hass)
+        except HomeAssistantError:
+            # HassioNotReadyError: the Supervisor's data is not loaded yet.
+            return None
+
+    infos = read("get_addons_info")
+    infos = infos if isinstance(infos, dict) else {}
+    listed = read("get_addons_list")
+    if not isinstance(listed, list):
+        supervisor = read("get_supervisor_info")
+        listed = supervisor.get("addons") if isinstance(supervisor, dict) else None
+    if not isinstance(listed, list):
+        if not infos:
+            return None
+        listed = [{"slug": slug, **(info or {})} for slug, info in infos.items()]
+    addons = []
+    for a in listed:
+        if not isinstance(a, dict) or not isinstance(a.get("slug"), str):
+            continue
+        info = infos.get(a["slug"]) or {}
+        options = info.get("options")
+        addons.append(
+            {
+                "slug": a["slug"],
+                "name": a.get("name") or info.get("name") or a["slug"],
+                "state": str(a.get("state") or info.get("state") or ""),
+                "options": options if isinstance(options, dict) else {},
+            }
+        )
+    return addons
+
+
+def z2m_addons(hass: HomeAssistant) -> list[dict[str, Any]] | None:
+    """The Zigbee2MQTT add-ons; `None` when the Supervisor's add-ons cannot be read."""
+    addons = supervisor_addons(hass)
+    if addons is None:
+        return None
+    return [a for a in addons if a["slug"].split("_", 1)[-1] in ADDON_SLUGS]
+
+
+def addon_dir(hass: HomeAssistant, data_path: str) -> str:
+    """An add-on's `data_path` as Home Assistant sees it.
+
+    The add-on maps HA's configuration directory to `/config` and `/share`
+    as it is; its own `/addon_config` is not visible to HA.
+    """
+    path = os.path.normpath(data_path)
+    if path == "/config" or path.startswith("/config/"):
+        return hass.config.path(path.removeprefix("/config").lstrip("/"))
+    return path
+
+
+def _newest(path: str) -> float | None:
+    """When `database.db` or `coordinator_backup.json` in `path` changed last; `None` without a database."""
+    if not os.path.exists(os.path.join(path, "database.db")):
+        return None
+    times = [
+        os.path.getmtime(f)
+        for name in ("database.db", "coordinator_backup.json")
+        if os.path.exists(f := os.path.join(path, name))
+    ]
+    return max(times)
+
+
+async def async_data_dir(hass: HomeAssistant, path: str | None) -> str:
+    """The data directory: `path`, the Zigbee2MQTT add-on's `data_path`, or the one default with data.
+
+    Without `path` and the add-on, both default places are looked at (the
+    add-on's `/config/zigbee2mqtt` and its older `/share/zigbee2mqtt`, which
+    a move leaves behind): data in both is refused rather than guessed.
+    """
     if path:
         return path
-    for d in DEFAULT_DIRS:
-        p = d if os.path.isabs(d) else hass.config.path(d)
-        if os.path.exists(os.path.join(p, "database.db")):
-            return p
-    return hass.config.path(DEFAULT_DIRS[-1])
+    candidates = [d if os.path.isabs(d) else hass.config.path(d) for d in DEFAULT_DIRS]
+    if is_hassio(hass) and (addons := z2m_addons(hass)):
+        dirs = list(
+            dict.fromkeys(
+                addon_dir(hass, str(a["options"].get("data_path") or ADDON_DATA_PATH))
+                for a in addons
+            )
+        )
+        for d in dirs:
+            if d == "/addon_config" or d.startswith("/addon_config/"):
+                raise ServiceValidationError(
+                    f"the Zigbee2MQTT add-on keeps its data in {d}, which Home Assistant cannot "
+                    "read: with the add-on stopped, copy that directory to /share/zigbee2mqtt "
+                    "and give it as path"
+                )
+        if len(dirs) == 1:
+            return dirs[0]
+        candidates = dirs
+    found = {}
+    for d in candidates:
+        if (t := await hass.async_add_executor_job(_newest, d)) is not None:
+            found[d] = t
+    if len(found) == 1:
+        return next(iter(found))
+    if not found:
+        raise ServiceValidationError(
+            f"no Zigbee2MQTT database in {' or '.join(candidates)}: give its data directory as path"
+        )
+    listed = ", ".join(
+        f"{d} (changed {dt_util.as_local(dt_util.utc_from_timestamp(t)).strftime('%Y-%m-%d %H:%M')})"
+        for d, t in sorted(found.items(), key=lambda x: -x[1])
+    )
+    raise ServiceValidationError(
+        f"Zigbee2MQTT data in more than one place: {listed}. Give the directory Zigbee2MQTT "
+        "uses now as path (the first changed last); an old copy would restore a stale network"
+    )
 
 
 def z2m_running(hass: HomeAssistant) -> str | None:
-    """Why Zigbee2MQTT looks to be running, if it does.
+    """Why Zigbee2MQTT must be taken as running, if it must.
 
-    Its Supervisor add-on started, or its bridge device (MQTT discovery,
-    not the hub's own bridge) connected.
+    Its Supervisor add-on started (or the add-ons' states cannot be read on
+    a Supervisor installation), or its bridge device (MQTT discovery, not
+    the hub's own bridge) connected.
     """
     if is_hassio(hass):
-        try:
-            from homeassistant.components.hassio import get_addons_list  # noqa: PLC0415
-
-            addons = get_addons_list(hass)
-        except (ImportError, HomeAssistantError):
-            addons = []
+        addons = z2m_addons(hass)
+        if addons is None:
+            return (
+                "the Supervisor's add-on states cannot be read, so a running Zigbee2MQTT add-on "
+                "cannot be ruled out; try again in a minute"
+            )
         for a in addons:
-            slug = str(a.get("slug", ""))
-            if slug.split("_", 1)[-1] in ADDON_SLUGS and str(a.get("state")) in (
-                "started",
-                "startup",
-            ):
-                return f"the {a.get('name') or slug} add-on is running"
+            if a["state"] in ("started", "startup"):
+                return f"the {a['name']} add-on is running"
     devices = dr.async_get(hass)
     entities = er.async_get(hass)
     for entry in hass.config_entries.async_entries("mqtt"):
@@ -396,7 +513,7 @@ async def async_import_from_z2m(
     hass: HomeAssistant, hub: Any, data: dict[str, Any]
 ) -> dict[str, Any]:
     """The `import_from_z2m` service: preview, or apply when `apply`."""
-    path = data_dir(hass, data.get("path"))
+    path = await async_data_dir(hass, data.get("path"))
     db = os.path.join(path, "database.db")
     if not await hass.async_add_executor_job(os.path.exists, db):
         raise ServiceValidationError(
@@ -405,8 +522,8 @@ async def async_import_from_z2m(
     apply = data.get("apply", False)
     if apply and (why := z2m_running(hass)):
         raise ServiceValidationError(
-            f"Zigbee2MQTT is running ({why}): stop it first (its add-on or container) and keep "
-            "it stopped. Two coordinators must never run one network."
+            f"Zigbee2MQTT may be running ({why}): stop it first (its add-on or container) and "
+            "keep it stopped. Two coordinators must never run one network."
         )
     try:
         doc, skipped = await hass.async_add_executor_job(read_z2m, path)

@@ -53,8 +53,46 @@
         },
         "data_description": {
           "sync_time_zone": "Set the hub's time zone (its Time cluster and the Tuya time sync for devices, its automations' schedules) to Home Assistant's, now, on every connection and when Home Assistant's changes."
+        },
+        "menu_options": {
+          "time_zone": "Time zone",
+          "mqtt": "MQTT bridge"
+        }
+      },
+      "time_zone": {
+        "title": "zigbee-rs hub",
+        "data": {
+          "sync_time_zone": "Sync the hub time zone from Home Assistant"
+        },
+        "data_description": {
+          "sync_time_zone": "Set the hub's time zone (its Time cluster and the Tuya time sync for devices, its automations' schedules) to Home Assistant's, now, on every connection and when Home Assistant's changes."
+        }
+      },
+      "mqtt": {
+        "title": "MQTT bridge",
+        "description": "The hub's Zigbee2MQTT-compatible MQTT bridge (plain MQTT over TCP: keep the broker on your LAN). Use either it with MQTT discovery or this integration in Home Assistant, not both.",
+        "data": {
+          "enabled": "Enabled",
+          "host": "Broker",
+          "port": "Port",
+          "username": "User name",
+          "password": "Password",
+          "clear_password": "Remove the stored password",
+          "base_topic": "Base topic"
+        },
+        "data_description": {
+          "host": "Host name or IP address of the broker (no scheme).",
+          "username": "Empty: an anonymous connection.",
+          "password": "Write-only: the hub never shows it. Empty keeps the stored one, unless the broker or the user name changes: then the stored password is removed (enter it again).",
+          "base_topic": "Zigbee2MQTT's base topic (zigbee2mqtt)."
         }
       }
+    },
+    "error": {
+      "mqtt_rejected": "The hub refused the settings: {error}"
+    },
+    "abort": {
+      "not_loaded": "The hub is not connected: try again once it is."
     }
   },
   "entity": {
@@ -107,9 +145,6 @@
             "name": "Requested"
           }
         }
-      },
-      "mqtt_port": {
-        "name": "MQTT port"
       },
       "transition": {
         "name": "Transition time"
@@ -234,6 +269,9 @@
           },
           "errors": {
             "name": "Errors"
+          },
+          "password_set": {
+            "name": "Password set"
           }
         }
       },
@@ -354,25 +392,6 @@
       },
       "mqtt_enabled": {
         "name": "MQTT bridge"
-      }
-    },
-    "text": {
-      "mqtt_host": {
-        "name": "MQTT broker"
-      },
-      "mqtt_username": {
-        "name": "MQTT user name"
-      },
-      "mqtt_password": {
-        "name": "MQTT password",
-        "state_attributes": {
-          "password_set": {
-            "name": "Password set"
-          }
-        }
-      },
-      "mqtt_base_topic": {
-        "name": "MQTT base topic"
       }
     },
     "update": {
@@ -787,7 +806,7 @@
         },
         "path": {
           "name": "Data directory",
-          "description": "Zigbee2MQTT's data directory; when empty /share/zigbee2mqtt or zigbee2mqtt in the configuration directory (the add-on's)."
+          "description": "Zigbee2MQTT's data directory; when empty the Zigbee2MQTT add-on's data_path, else zigbee2mqtt in the configuration directory or /share/zigbee2mqtt, whichever has the data (both: give it)."
         },
         "force": {
           "name": "Replace the running network",

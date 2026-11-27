@@ -63,20 +63,6 @@
       "ncp_log_level": {
         "default": "mdi:text-box-search"
       }
-    },
-    "text": {
-      "mqtt_host": {
-        "default": "mdi:server-network"
-      },
-      "mqtt_username": {
-        "default": "mdi:account"
-      },
-      "mqtt_password": {
-        "default": "mdi:form-textbox-password"
-      },
-      "mqtt_base_topic": {
-        "default": "mdi:format-list-group"
-      }
     }
   },
   "services": {

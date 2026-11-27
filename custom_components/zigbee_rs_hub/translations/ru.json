@@ -53,8 +53,46 @@
         },
         "data_description": {
           "sync_time_zone": "Устанавливать часовой пояс хаба (его кластер Time и синхронизацию времени Tuya для устройств, расписания его автоматизаций) равным поясу Home Assistant: сейчас, при каждом подключении и при изменении пояса в Home Assistant."
+        },
+        "menu_options": {
+          "time_zone": "Часовой пояс",
+          "mqtt": "Мост MQTT"
+        }
+      },
+      "time_zone": {
+        "title": "zigbee-rs hub",
+        "data": {
+          "sync_time_zone": "Брать часовой пояс хаба из Home Assistant"
+        },
+        "data_description": {
+          "sync_time_zone": "Устанавливать часовой пояс хаба (его кластер Time и синхронизацию времени Tuya для устройств, расписания его автоматизаций) равным поясу Home Assistant: сейчас, при каждом подключении и при изменении пояса в Home Assistant."
+        }
+      },
+      "mqtt": {
+        "title": "Мост MQTT",
+        "description": "MQTT-мост хаба, совместимый с Zigbee2MQTT (обычный MQTT по TCP: держите брокер в локальной сети). Используйте в Home Assistant либо его с MQTT discovery, либо эту интеграцию, но не оба сразу.",
+        "data": {
+          "enabled": "Включён",
+          "host": "Брокер",
+          "port": "Порт",
+          "username": "Имя пользователя",
+          "password": "Пароль",
+          "clear_password": "Удалить сохранённый пароль",
+          "base_topic": "Базовый топик"
+        },
+        "data_description": {
+          "host": "Имя хоста или IP-адрес брокера (без схемы).",
+          "username": "Пусто — анонимное подключение.",
+          "password": "Только запись: хаб никогда его не показывает. Пусто — сохранённый остаётся, если не меняются брокер или имя пользователя: тогда сохранённый пароль удаляется (введите его снова).",
+          "base_topic": "Базовый топик Zigbee2MQTT (zigbee2mqtt)."
         }
       }
+    },
+    "error": {
+      "mqtt_rejected": "Хаб отклонил настройки: {error}"
+    },
+    "abort": {
+      "not_loaded": "Хаб не подключён: повторите, когда он подключится."
     }
   },
   "entity": {
@@ -107,9 +145,6 @@
             "name": "Запрошено"
           }
         }
-      },
-      "mqtt_port": {
-        "name": "Порт MQTT"
       },
       "transition": {
         "name": "Время перехода"
@@ -234,6 +269,9 @@
           },
           "errors": {
             "name": "Ошибки"
+          },
+          "password_set": {
+            "name": "Пароль задан"
           }
         }
       },
@@ -354,25 +392,6 @@
       },
       "mqtt_enabled": {
         "name": "Мост MQTT"
-      }
-    },
-    "text": {
-      "mqtt_host": {
-        "name": "Брокер MQTT"
-      },
-      "mqtt_username": {
-        "name": "Имя пользователя MQTT"
-      },
-      "mqtt_password": {
-        "name": "Пароль MQTT",
-        "state_attributes": {
-          "password_set": {
-            "name": "Пароль задан"
-          }
-        }
-      },
-      "mqtt_base_topic": {
-        "name": "Базовый топик MQTT"
       }
     },
     "update": {
@@ -787,7 +806,7 @@
         },
         "path": {
           "name": "Каталог данных",
-          "description": "Каталог данных Zigbee2MQTT; если пусто — /share/zigbee2mqtt или zigbee2mqtt в каталоге конфигурации (дополнения)."
+          "description": "Каталог данных Zigbee2MQTT; если пусто — data_path дополнения Zigbee2MQTT, иначе zigbee2mqtt в каталоге конфигурации или /share/zigbee2mqtt, где есть данные (если в обоих — укажите явно)."
         },
         "force": {
           "name": "Заменить работающую сеть",

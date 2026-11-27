@@ -173,7 +173,11 @@ class DeviceCountSensor(HubEntity, SensorEntity):
 
 
 class MqttStatusSensor(HubEntity, SensorEntity):
-    """The state of the hub's MQTT bridge (mqtt/status, read every minute)."""
+    """The state of the hub's MQTT bridge (mqtt/status, read every minute).
+
+    The broker and its credentials are set in the entry's options (admin
+    only, never on the event bus); this sensor only reads.
+    """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = MQTT_STATES
@@ -211,6 +215,7 @@ class MqttStatusSensor(HubEntity, SensorEntity):
         return {
             "broker": f"{cfg.get('host')}:{cfg.get('port')}" if cfg.get("host") else None,
             "base_topic": cfg.get("base_topic"),
+            "password_set": cfg.get("password_set"),
             "last_error": st.get("last_error"),
             "retry_in_s": st.get("retry_in_s"),
             "connects": st.get("connects"),

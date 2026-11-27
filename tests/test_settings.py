@@ -5,14 +5,27 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry, MockUser
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    MockUser,
+    async_capture_events,
+)
 
 from custom_components.zigbee_rs_hub.const import DOMAIN
-from homeassistant.const import ATTR_ENTITY_ID, STATE_OFF, STATE_ON, STATE_UNKNOWN
+from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    EVENT_CALL_SERVICE,
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import entity_registry as er
 
+from .fake_hub import SWITCH_UID
 from .fake_network import NetworkFakeHub
 from .test_init import wait_for
 
@@ -30,68 +43,180 @@ def hub_eid(hass: HomeAssistant, entry: MockConfigEntry, platform: str, key: str
     return er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{entry.entry_id}_{key}")
 
 
-async def test_mqtt_settings(
+async def _user(hass: HomeAssistant, admin: bool) -> MockUser:
+    group = await hass.auth.async_get_group(GROUP_ID_ADMIN if admin else GROUP_ID_USER)
+    return MockUser(groups=[group]).add_to_hass(hass)
+
+
+async def _mqtt_form(hass: HomeAssistant, entry: MockConfigEntry) -> dict:
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["time_zone", "mqtt"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "mqtt"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "mqtt"
+    return result
+
+
+MQTT_FORM = {
+    "enabled": False,
+    "host": "",
+    "port": 1883,
+    "username": "",
+    "base_topic": "zigbee2mqtt",
+}
+
+
+async def test_mqtt_settings_in_the_options(
     hass: HomeAssistant, fake_hub: NetworkFakeHub, setup_entry: MockConfigEntry
 ) -> None:
+    """Broker and credentials only in the options flow: admins, off the event bus."""
+    events = async_capture_events(hass, EVENT_CALL_SERVICE)
     switch = hub_eid(hass, setup_entry, "switch", "mqtt_enabled")
-    host = hub_eid(hass, setup_entry, "text", "mqtt_host")
-    password = hub_eid(hass, setup_entry, "text", "mqtt_password")
-    port = hub_eid(hass, setup_entry, "number", "mqtt_port")
-    topic = hub_eid(hass, setup_entry, "text", "mqtt_base_topic")
     status = hub_eid(hass, setup_entry, "sensor", "mqtt_status")
     assert er.async_get(hass).async_get(switch).entity_category is er.EntityCategory.CONFIG
     assert hass.states.get(switch).state == STATE_OFF
-    assert hass.states.get(topic).state == "zigbee2mqtt"
-    assert float(hass.states.get(port).state) == 1883
     assert hass.states.get(status).state == "disabled"
-    assert hass.states.get(password).state == STATE_UNKNOWN
-    assert hass.states.get(password).attributes["password_set"] is False
+    assert hass.states.get(status).attributes["password_set"] is False
+    # No entity takes the broker, the user name or the password.
+    for platform, key in (
+        ("text", "mqtt_host"),
+        ("text", "mqtt_password"),
+        ("number", "mqtt_port"),
+    ):
+        assert hub_eid(hass, setup_entry, platform, key) is None, key
 
+    result = await _mqtt_form(hass, setup_entry)
     # The hub refuses enabling without a broker.
-    with pytest.raises(HomeAssistantError, match="host: required"):
-        await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
-    await hass.services.async_call(
-        "text", "set_value", {ATTR_ENTITY_ID: host, "value": "192.168.1.2"}, blocking=True
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**MQTT_FORM, "enabled": True}
     )
-    await hass.services.async_call(
-        "text",
-        "set_value",
-        {ATTR_ENTITY_ID: hub_eid(hass, setup_entry, "text", "mqtt_username"), "value": "ha"},
-        blocking=True,
+    assert result["errors"] == {"base": "mqtt_rejected"}
+    assert "host: required" in result["description_placeholders"]["error"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            **MQTT_FORM,
+            "enabled": True,
+            "host": "192.168.1.2",
+            "port": 1884.0,
+            "username": "ha",
+            "password": "s3cret",
+        },
     )
-    await hass.services.async_call(
-        "text", "set_value", {ATTR_ENTITY_ID: password, "value": "s3cret"}, blocking=True
-    )
-    await hass.services.async_call(
-        "number", "set_value", {ATTR_ENTITY_ID: port, "value": 1884}, blocking=True
-    )
-    await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
-    sets = fake_hub.calls("mqtt/config/set")
-    assert [{k: v for k, v in r.items() if k not in ("id", "type")} for r in sets] == [
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    sets = [
+        {k: v for k, v in r.items() if k not in ("id", "type")}
+        for r in fake_hub.calls("mqtt/config/set")
+    ]
+    assert sets == [
         {"enabled": True},
-        {"host": "192.168.1.2"},
-        {"username": "ha"},
-        {"password": "s3cret"},
-        {"port": 1884},
-        {"enabled": True},
+        {
+            "enabled": True,
+            "host": "192.168.1.2",
+            "port": 1884,
+            "username": "ha",
+            "password": "s3cret",
+        },
     ]
     assert fake_hub.mqtt_password == "s3cret"
+    # Not stored in the entry, never on the event bus.
+    assert "s3cret" not in repr(setup_entry.options) + repr(setup_entry.data)
+    assert not [e for e in events if "s3cret" in repr(e.data)]
+    await hass.async_block_till_done()
     assert hass.states.get(switch).state == STATE_ON
-    assert hass.states.get(host).state == "192.168.1.2"
-    # Write-only: never shown, only that one is set.
-    assert hass.states.get(password).state == STATE_UNKNOWN
-    assert hass.states.get(password).attributes["password_set"] is True
+    assert hass.states.get(status).attributes["password_set"] is True
     await setup_entry.runtime_data.settings.async_refresh_mqtt_status()
     await wait_for(hass, lambda: hass.states.get(status).state == "connected")
     assert hass.states.get(status).attributes["broker"] == "192.168.1.2:1884"
+
+    # Another broker without a new password: the stored one is removed.
+    result = await _mqtt_form(hass, setup_entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {**MQTT_FORM, "enabled": True, "host": "broker.lan", "port": 1884, "username": "ha"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert fake_hub.calls("mqtt/config/set")[-1]["host"] == "broker.lan"
+    assert fake_hub.calls("mqtt/config/set")[-1]["password"] == ""
+    assert fake_hub.mqtt["password_set"] is False
+    # Only the port: the password is kept.
+    fake_hub.mqtt["password_set"] = True
+    result = await _mqtt_form(hass, setup_entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {**MQTT_FORM, "enabled": True, "host": "broker.lan", "port": 1885, "username": "ha"},
+    )
+    assert {
+        k: v for k, v in fake_hub.calls("mqtt/config/set")[-1].items() if k not in ("id", "type")
+    } == {"port": 1885}
 
     from custom_components.zigbee_rs_hub.diagnostics import (
         async_get_config_entry_diagnostics,
     )
 
     diag = await async_get_config_entry_diagnostics(hass, setup_entry)
-    assert diag["settings"]["mqtt"]["host"] == "192.168.1.2"
+    assert diag["settings"]["mqtt"]["host"] == "broker.lan"
     assert diag["settings"]["mqtt"]["username"] == "**REDACTED**"
+
+
+async def test_settings_entities_are_for_admins(
+    hass: HomeAssistant, fake_hub: NetworkFakeHub, setup_entry: MockConfigEntry
+) -> None:
+    """Every user may control entities: the hub's settings check for an administrator."""
+    user = await _user(hass, admin=False)
+    admin = await _user(hass, admin=True)
+    calls = [
+        ("switch", "turn_on", hub_eid(hass, setup_entry, "switch", "mqtt_enabled"), {}),
+        ("number", "set_value", hub_eid(hass, setup_entry, "number", "tx_power"), {"value": 10}),
+        (
+            "select",
+            "select_option",
+            hub_eid(hass, setup_entry, "select", "ncp_log_level"),
+            {"option": "debug"},
+        ),
+        (
+            "select",
+            "select_option",
+            hub_eid(hass, setup_entry, "select", "channel_change"),
+            {"option": "20"},
+        ),
+    ]
+    fake_hub.mqtt["host"] = "192.168.1.2"
+    # The user controls other entities (HA's own permission check passes).
+    await hass.services.async_call(
+        "switch",
+        "turn_on",
+        {ATTR_ENTITY_ID: er.async_get(hass).async_get_entity_id("switch", DOMAIN, SWITCH_UID)},
+        blocking=True,
+        context=Context(user_id=user.id),
+    )
+    for domain, service, entity_id, data in calls:
+        with pytest.raises(Unauthorized):
+            await hass.services.async_call(
+                domain,
+                service,
+                {ATTR_ENTITY_ID: entity_id, **data},
+                blocking=True,
+                context=Context(user_id=user.id),
+            )
+    assert not fake_hub.calls("mqtt/config/set")
+    assert not fake_hub.calls("network/set_tx_power")
+    assert [r for r in fake_hub.calls("network/ncp_log") if "level" in r] == []
+    assert setup_entry.runtime_data.settings.channel_target is None
+    for domain, service, entity_id, data in calls:
+        await hass.services.async_call(
+            domain,
+            service,
+            {ATTR_ENTITY_ID: entity_id, **data},
+            blocking=True,
+            context=Context(user_id=admin.id),
+        )
+    assert fake_hub.calls("mqtt/config/set")[0]["enabled"] is True
+    assert fake_hub.calls("network/set_tx_power")[0]["dbm"] == 10
+    assert setup_entry.runtime_data.settings.channel_target == 20
 
 
 async def test_tx_power(
@@ -183,7 +308,6 @@ async def test_settings_once_the_ncp_session_is_up(
         ("number", "tx_power"),
         ("select", "channel_change"),
         ("select", "ncp_log_level"),
-        ("text", "mqtt_host"),
         ("sensor", "mqtt_status"),
     ):
         assert hub_eid(hass, config_entry, platform, key) is not None, key
@@ -201,8 +325,6 @@ async def test_hub_without_settings(
     await hass.async_block_till_done()
     for platform, key in (
         ("switch", "mqtt_enabled"),
-        ("text", "mqtt_host"),
-        ("number", "mqtt_port"),
         ("sensor", "mqtt_status"),
         ("number", "tx_power"),
         ("select", "channel_change"),

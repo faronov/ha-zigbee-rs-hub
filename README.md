@@ -78,16 +78,24 @@ has, and the integration maps them 1:1 onto HA platforms.
   discovery `zigbee2mqtt_0x…`), e.g. after an import from the web UI or
   hubctl; `overwrite` replaces names and areas the hub's devices have.
 - Migration from Zigbee2MQTT without pairing again (admin service):
-  `zigbee_rs_hub.import_from_z2m` reads Zigbee2MQTT's data directory
-  (`path`; default `/share/zigbee2mqtt`, else `zigbee2mqtt` in HA's
-  configuration directory, the add-on's two places): `database.db`,
+  `zigbee_rs_hub.import_from_z2m` reads Zigbee2MQTT's data directory:
+  `path`, else the Zigbee2MQTT add-on's `data_path` option (its `/config`
+  is HA's configuration directory; `/addon_config` is not readable from
+  HA: copy the directory to `/share`), else whichever of
+  `zigbee2mqtt` in HA's configuration directory (the add-on's default) and
+  `/share/zigbee2mqtt` (its older default) has a `database.db` — data in
+  both is refused, listing both with the time each changed last, since an
+  add-on move leaves the old copy behind. It reads `database.db`,
   `coordinator_backup.json` and the friendly names of `configuration.yaml`
   (or the `devices.yaml`/`groups.yaml` it names; `!secret` values are not
-  needed and read as empty). It builds the hub's import document as
+  needed and read as empty), builds the hub's import document as
   `hubctl import z2m` does (the end-to-end test compares the two) and
   previews or, with `apply` and the same options as `import_from_zha`,
-  imports. Applying is refused while Zigbee2MQTT looks to be running: its
-  Supervisor add-on started, or its bridge device (MQTT discovery,
+  imports. Applying is refused while Zigbee2MQTT may be running: its
+  Supervisor add-on started (the states from `get_addons_list` on HA
+  2026.4+, else from the Supervisor info or the add-on infos; on a
+  Supervisor installation whose add-on states cannot be read, applying is
+  refused too), or its bridge device (MQTT discovery,
   `zigbee2mqtt_bridge_…`, not the hub's own MQTT bridge) connected. The
   hub's devices take Zigbee2MQTT's friendly names; afterwards the areas,
   and names set in HA, of Zigbee2MQTT's MQTT devices go to the hub's new
@@ -124,21 +132,32 @@ has, and the integration maps them 1:1 onto HA platforms.
   request's state: `bound`/`unbound`/`ok`, `pending`, `failed` with the
   device's status, or `queued` — a sleepy device gets the request when it
   is next heard from (press a button, or wait for its check-in).
-- **Hub settings** on the hub device, each only where the hub has the API
-  (`maintenance` in `hub/info`; also when the hub reports it after HA
-  connected): **MQTT bridge** (switch; `mqtt/config/set`), **MQTT broker**,
-  **MQTT port**, **MQTT user name**, **MQTT base topic** and **MQTT
-  password** (write-only: the hub never returns it, the entity shows
-  unknown and `password_set`), a diagnostic **MQTT bridge** status sensor
-  (`mqtt/status`, read every minute: state, broker, last error, counters);
-  **Zigbee TX power** (number, dBm, antenna-referred; the NCP rounds down to
-  its radio's steps; `network/set_tx_power`); **NCP log level** (select,
-  `network/ncp_log`, zigbee-rs NCPs of hubs that have it); and **Channel
-  change**: the select only stages a channel (with a warning notification),
-  the admin action `zigbee_rs_hub.change_channel` with `confirm: true`
-  moves the network (`network/change_channel`; channel from the select or
-  `channel`). Every device must follow a channel change; sleepy ones find
-  the network when they wake, some only after a rejoin.
+- **Hub settings**, each only where the hub has the API (`maintenance` in
+  `hub/info`; also when the hub reports it after HA connected), for
+  administrators: HA lets every user control entities, so the setting
+  entities refuse a change asked for by a user who is not an
+  administrator (automations and scripts may change them).
+  - The **MQTT bridge**'s broker, port, user name, password and base topic
+    are set in the entry's options (*Configure* → *MQTT bridge*;
+    `mqtt/config/set`): options flows are for administrators and their
+    input never goes on the event bus (an entity's `set_value` would put a
+    password in the recorder's events). The password is write-only — the
+    hub never returns it, the form leaves it empty and keeps the stored one
+    — and it is removed when the broker or the user name changes without a
+    new one, so it never goes to another broker. Nothing of it is stored in
+    the entry. On the hub device: an **MQTT bridge** switch (on/off) and a
+    diagnostic **MQTT bridge** status sensor (`mqtt/status`, read every
+    minute: state, broker, base topic, whether a password is set, last
+    error, counters).
+  - **Zigbee TX power** (number, dBm, antenna-referred; the NCP rounds down
+    to its radio's steps; `network/set_tx_power`) and **NCP log level**
+    (select, `network/ncp_log`, zigbee-rs NCPs of hubs that have it).
+  - **Channel change**: the select only stages a channel (with a warning
+    notification), the admin action `zigbee_rs_hub.change_channel` with
+    `confirm: true` moves the network (`network/change_channel`; channel
+    from the select or `channel`). Every device must follow a channel
+    change; sleepy ones find the network when they wake, some only after a
+    rejoin.
 - Option **Sync the hub time zone from Home Assistant** (on for entries
   made since it exists, off for older ones; Configure on the entry): on
   every connection, when HA's time zone changes and when the option is
@@ -338,7 +357,7 @@ From then on HACS tracks the installed version.
 | device record `nwk`, `interview`, `available`, `power`; `devices/diagnostics` `interview_resumes` | Network address, Interview, Interview resumes sensors; Devices, Offline devices, Routers, End devices on the hub device |
 | `network/topology` (a job: `{job}`, then the `job_result` frame; `job_done` of other clients' scans → `network/topology {refresh: false}`) | `scan_topology` service response, entry diagnostics, Parent sensors, node types for the router counts |
 | `bindings/create`, `bindings/delete`, `bindings/read`, `bindings/list`, `groups/create`, `groups/delete`, `groups/add_member`, `groups/remove_member`, `groups/list`, `devices/get` (endpoints) | `bind`, `unbind`, `read_bindings`, `group_*` services |
-| `mqtt/config/get`, `mqtt/config/set`, `mqtt/status`, `network/set_tx_power`, `network/ncp_log`, `network/change_channel`, event `network_updated` → `network/info` | hub settings entities, `change_channel` service |
+| `mqtt/config/get`, `mqtt/config/set`, `mqtt/status`, `network/set_tx_power`, `network/ncp_log`, `network/change_channel`, event `network_updated` → `network/info` | the options flow's MQTT bridge step, hub settings entities (administrators), `change_channel` service |
 | `network/import/preview`, `network/import` with Zigbee2MQTT's files | `import_from_z2m` service (the files read in HA as `hubctl import z2m` reads them), then the areas of Zigbee2MQTT's MQTT devices |
 
 ## Development and tests

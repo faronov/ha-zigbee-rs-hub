@@ -50,18 +50,23 @@ the hub firmware each version needs.
   `group_remove_member`. They wait a few seconds for the device and report
   each request's state; a sleepy device's request is reported `queued`
   (sent when it wakes).
-- Hub settings on the hub device, where the hub has the API: the MQTT
-  bridge (on/off, broker, port, user name, base topic, write-only password;
-  a status sensor), Zigbee TX power, NCP log level (hubs with
-  `network/ncp_log`), and a staged **Channel change** select applied by the
-  admin action `zigbee_rs_hub.change_channel` with `confirm: true`.
-  Entities of features a hub reports only once its NCP session is up are
-  added then.
+- Hub settings, where the hub has the API, for administrators: the MQTT
+  bridge's broker, port, user name, write-only password and base topic in
+  the entry's options (*Configure* → *MQTT bridge*; never on the event bus
+  or in the entry; the stored password is removed when the broker or user
+  name changes without a new one), an **MQTT bridge** switch and status
+  sensor; Zigbee TX power, NCP log level (hubs with `network/ncp_log`), and
+  a staged **Channel change** select applied by the admin action
+  `zigbee_rs_hub.change_channel` with `confirm: true`. The setting entities
+  refuse changes by users who are not administrators. Entities of features
+  a hub reports only once its NCP session is up are added then.
 - Migration from Zigbee2MQTT (admin): `zigbee_rs_hub.import_from_z2m` reads
-  Zigbee2MQTT's data directory (`database.db`, `coordinator_backup.json`,
-  the friendly names of `configuration.yaml`) as `hubctl import z2m` does,
+  Zigbee2MQTT's data directory (`path`, else the add-on's `data_path`, else
+  the one default place with data — both `/config/zigbee2mqtt` and
+  `/share/zigbee2mqtt` with data is refused) as `hubctl import z2m` does,
   previews or applies the import (refused while the Zigbee2MQTT add-on or
-  its MQTT bridge runs), then gives the hub's devices the areas and the
+  its MQTT bridge runs, and on a Supervisor installation whose add-on
+  states cannot be read), then gives the hub's devices the areas and the
   names set in HA of Zigbee2MQTT's MQTT devices.
 - The manifest names `hassio` as an after-dependency (the Zigbee2MQTT
   add-on's state).

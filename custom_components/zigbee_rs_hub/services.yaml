@@ -232,7 +232,7 @@ import_from_z2m:
       selector:
         boolean:
     path:
-      example: "/share/zigbee2mqtt"
+      example: "/config/zigbee2mqtt"
       selector:
         text:
     force:
