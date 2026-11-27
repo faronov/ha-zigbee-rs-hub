@@ -11,6 +11,33 @@
     "sensor": {
       "catalog_version": {
         "default": "mdi:book-open-variant"
+      },
+      "devices": {
+        "default": "mdi:devices"
+      },
+      "offline_devices": {
+        "default": "mdi:lan-disconnect"
+      },
+      "routers": {
+        "default": "mdi:router-wireless"
+      },
+      "end_devices": {
+        "default": "mdi:leaf"
+      },
+      "mqtt_status": {
+        "default": "mdi:transit-connection-variant"
+      },
+      "network_address": {
+        "default": "mdi:identifier"
+      },
+      "interview": {
+        "default": "mdi:clipboard-check-outline"
+      },
+      "parent": {
+        "default": "mdi:graph-outline"
+      },
+      "interview_resumes": {
+        "default": "mdi:restart"
       }
     },
     "switch": {
@@ -19,6 +46,22 @@
         "state": {
           "off": "mdi:robot-off"
         }
+      },
+      "mqtt_enabled": {
+        "default": "mdi:transit-connection-variant"
+      }
+    },
+    "number": {
+      "tx_power": {
+        "default": "mdi:antenna"
+      }
+    },
+    "select": {
+      "channel_change": {
+        "default": "mdi:swap-horizontal"
+      },
+      "ncp_log_level": {
+        "default": "mdi:text-box-search"
       }
     }
   },
@@ -31,6 +74,36 @@
     },
     "reconfigure_device": {
       "service": "mdi:cog-refresh"
+    },
+    "scan_topology": {
+      "service": "mdi:graph"
+    },
+    "bind": {
+      "service": "mdi:link-variant"
+    },
+    "unbind": {
+      "service": "mdi:link-variant-off"
+    },
+    "read_bindings": {
+      "service": "mdi:table-search"
+    },
+    "group_create": {
+      "service": "mdi:group"
+    },
+    "group_remove": {
+      "service": "mdi:delete"
+    },
+    "group_add_member": {
+      "service": "mdi:account-multiple-plus"
+    },
+    "group_remove_member": {
+      "service": "mdi:account-multiple-minus"
+    },
+    "change_channel": {
+      "service": "mdi:swap-horizontal"
+    },
+    "import_from_z2m": {
+      "service": "mdi:database-import"
     },
     "update_catalog": {
       "service": "mdi:book-sync"

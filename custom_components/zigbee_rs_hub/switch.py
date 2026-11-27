@@ -17,6 +17,7 @@ from .entity import (
     setup_automations,
     setup_platform,
 )
+from .settings_entities import MqttEnabledSwitch, add_when_supported, has_mqtt
 
 
 async def async_setup_entry(
@@ -24,7 +25,8 @@ async def async_setup_entry(
     entry: ZigbeeRsHubConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Switches of the hub's devices; one per hub automation (enabled)."""
+    """Switches of the hub's devices; one per hub automation (enabled); the MQTT bridge."""
+    add_when_supported(entry, async_add_entities, has_mqtt, lambda hub: [MqttEnabledSwitch(hub)])
     setup_platform(entry, "switch", async_add_entities, ZigbeeRsSwitch)
     setup_automations(entry, "switch", async_add_entities, AutomationSwitch)
 

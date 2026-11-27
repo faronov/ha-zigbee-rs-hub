@@ -77,6 +77,87 @@ has, and the integration maps them 1:1 onto HA platforms.
   HA and the areas of the same devices in ZHA or Zigbee2MQTT (MQTT
   discovery `zigbee2mqtt_0x…`), e.g. after an import from the web UI or
   hubctl; `overwrite` replaces names and areas the hub's devices have.
+- Migration from Zigbee2MQTT without pairing again (admin service):
+  `zigbee_rs_hub.import_from_z2m` reads Zigbee2MQTT's data directory:
+  `path`, else the Zigbee2MQTT add-on's `data_path` option (its `/config`
+  is HA's configuration directory; `/addon_config` is not readable from
+  HA: copy the directory to `/share`), else whichever of
+  `zigbee2mqtt` in HA's configuration directory (the add-on's default) and
+  `/share/zigbee2mqtt` (its older default) has a `database.db` — data in
+  both is refused, listing both with the time each changed last, since an
+  add-on move leaves the old copy behind. It reads `database.db`,
+  `coordinator_backup.json` and the friendly names of `configuration.yaml`
+  (or the `devices.yaml`/`groups.yaml` it names; `!secret` values are not
+  needed and read as empty), builds the hub's import document as
+  `hubctl import z2m` does (the end-to-end test compares the two) and
+  previews or, with `apply` and the same options as `import_from_zha`,
+  imports. Applying is refused while Zigbee2MQTT may be running: its
+  Supervisor add-on started (the states from `get_addons_list` on HA
+  2026.4+, else from the Supervisor info or the add-on infos; on a
+  Supervisor installation whose add-on states cannot be read, applying is
+  refused too), or its bridge device (MQTT discovery,
+  `zigbee2mqtt_bridge_…`, not the hub's own MQTT bridge) connected. The
+  hub's devices take Zigbee2MQTT's friendly names; afterwards the areas,
+  and names set in HA, of Zigbee2MQTT's MQTT devices go to the hub's new
+  devices.
+- **Network health.** The hub's own **Link quality** and **Last seen**
+  sensors of every device are enabled (the hub marks them disabled by
+  default; RSSI stays disabled; entities already in HA keep their
+  setting). Each Zigbee device also gets **Network address** (`0x1A2B`),
+  **Interview** (`complete`, `partial`, `imported` — migrated, not heard
+  yet —, `in_progress`), **Parent** (from the last network map: the parent
+  of an end device, `Coordinator` or its name in HA, with the link quality,
+  depth and the coordinator's route as attributes) and **Interview
+  resumes** (`devices/diagnostics`, read every 30 minutes), all diagnostic
+  and disabled by default. The hub device has **Devices** (Zigbee and Green
+  Power), **Offline devices** (with their names), **Routers** and **End
+  devices** (by the network map's node types, else mains-powered devices
+  count as routers). `zigbee_rs_hub.scan_topology` runs the hub's network
+  map (`network/topology`, a background job on the hub: the coordinator's
+  and every router's neighbour and routing tables, up to 150 s; `routes:
+  false` skips the routing tables, `refresh: false` returns the last map)
+  and returns it as the action's response; the last map is kept for the
+  entry diagnostics and the Parent sensors, also when another client (the
+  web UI's network map) ran it. Drawing the map in HA is not part of this.
+- **Bindings and groups** (API 1.3 hubs): `zigbee_rs_hub.bind` /
+  `unbind` (source device, its endpoint — by default the first with all
+  the clusters, client clusters first —, `clusters` as numbers, `0x…` or
+  names such as `on_off`, `level_control`, `color_control`; target a
+  device and endpoint — by default the first serving the clusters — or a
+  group), `read_bindings` (Mgmt_Bind_req; the table and the requests not
+  answered yet), `group_create` (name, optional ID, `hub_member`),
+  `group_remove` (`force`), `group_add_member` / `group_remove_member`
+  (device and endpoint, by default the first with the Groups cluster). The
+  services wait `wait` seconds (10) for the device and answer with each
+  request's state: `bound`/`unbound`/`ok`, `pending`, `failed` with the
+  device's status, or `queued` — a sleepy device gets the request when it
+  is next heard from (press a button, or wait for its check-in).
+- **Hub settings**, each only where the hub has the API (`maintenance` in
+  `hub/info`; also when the hub reports it after HA connected), for
+  administrators: HA lets every user control entities, so the setting
+  entities refuse a change asked for by a user who is not an
+  administrator (automations and scripts may change them).
+  - The **MQTT bridge**'s broker, port, user name, password and base topic
+    are set in the entry's options (*Configure* → *MQTT bridge*;
+    `mqtt/config/set`): options flows are for administrators and their
+    input never goes on the event bus (an entity's `set_value` would put a
+    password in the recorder's events). The password is write-only — the
+    hub never returns it, the form leaves it empty and keeps the stored one
+    — and it is removed when the broker or the user name changes without a
+    new one, so it never goes to another broker. Nothing of it is stored in
+    the entry. On the hub device: an **MQTT bridge** switch (on/off) and a
+    diagnostic **MQTT bridge** status sensor (`mqtt/status`, read every
+    minute: state, broker, base topic, whether a password is set, last
+    error, counters).
+  - **Zigbee TX power** (number, dBm, antenna-referred; the NCP rounds down
+    to its radio's steps; `network/set_tx_power`) and **NCP log level**
+    (select, `network/ncp_log`, zigbee-rs NCPs of hubs that have it).
+  - **Channel change**: the select only stages a channel (with a warning
+    notification), the admin action `zigbee_rs_hub.change_channel` with
+    `confirm: true` moves the network (`network/change_channel`; channel
+    from the select or `channel`). Every device must follow a channel
+    change; sleepy ones find the network when they wake, some only after a
+    rejoin.
 - Option **Sync the hub time zone from Home Assistant** (on for entries
   made since it exists, off for older ones; Configure on the entry): on
   every connection, when HA's time zone changes and when the option is
@@ -178,6 +259,11 @@ What needs which hub firmware:
 | Firmware `update` entities (8 MB images only), hub time zone from HA | 0.3.0 |
 | `import_from_zha`, `copy_names_areas` | 0.4.0 |
 | Device triggers, hub events and logbook, repairs (partial interview, offline, definitions) | 0.1.0 (definitions: 0.1.3; crash: `hub/system` `reset_reason`, 0.1.3; left: 0.3.0) |
+| Network map (`scan_topology`, Parent sensors), Zigbee TX power, Channel change | 0.1.3 (API 1.2) |
+| Bindings and group services, MQTT bridge settings (8 MB images and `hubctl`) | 0.2.0 |
+| `import_from_z2m` | 0.4.0 |
+| Interview resumes sensor | 0.4.1 |
+| NCP log level | the next hub release (`network/ncp_log`, zigbee-rs NCPs) |
 
 Use the newest hub release with the newest integration; the end-to-end
 tests run against the hub release named in `HUB_REF` of
@@ -268,6 +354,11 @@ From then on HACS tracks the installed version.
 | `catalog/status`, `catalog/upload_chunk`, `catalog/commit`, events `definition_needed`, `catalog_*` | `update_catalog` service, automatic checks, **Catalog version** sensor; `missing` (no shards left, `refused`) and failed runs → repair issues |
 | `network/import/preview`, `network/import` | `import_from_zha` service (ZHA's `zigbee.db` read with `sqlite3` in HA), then ZHA's areas on the new devices; `copy_names_areas` service |
 | `automations/list`, topic `automations` (`automation_added`/`_updated`/`_removed`/`_run`) (API 1.3) | per rule: `switch` `<entry>_automation_<id>` (enabled), `button` `<entry>_automation_<id>_run`; `automations/enable`, `disable`, `run` |
+| device record `nwk`, `interview`, `available`, `power`; `devices/diagnostics` `interview_resumes` | Network address, Interview, Interview resumes sensors; Devices, Offline devices, Routers, End devices on the hub device |
+| `network/topology` (a job: `{job}`, then the `job_result` frame; `job_done` of other clients' scans → `network/topology {refresh: false}`) | `scan_topology` service response, entry diagnostics, Parent sensors, node types for the router counts |
+| `bindings/create`, `bindings/delete`, `bindings/read`, `bindings/list`, `groups/create`, `groups/delete`, `groups/add_member`, `groups/remove_member`, `groups/list`, `devices/get` (endpoints) | `bind`, `unbind`, `read_bindings`, `group_*` services |
+| `mqtt/config/get`, `mqtt/config/set`, `mqtt/status`, `network/set_tx_power`, `network/ncp_log`, `network/change_channel`, event `network_updated` → `network/info` | the options flow's MQTT bridge step, hub settings entities (administrators), `change_channel` service |
+| `network/import/preview`, `network/import` with Zigbee2MQTT's files | `import_from_z2m` service (the files read in HA as `hubctl import z2m` reads them), then the areas of Zigbee2MQTT's MQTT devices |
 
 ## Development and tests
 
@@ -291,6 +382,10 @@ its catalog test also needs `zdefc` (next to hubctl, or `ZDEFC`) to build and
 sign a test release from the hub's `definitions/examples` (`HUB_REPO`, by
 default the checkout hubctl was built in). `tests/test_e2e_ota.py` runs
 `hubctl --sim --sim-ota serve` (a simulated device with an OTA client).
+`tests/test_e2e_network.py` runs the network map, bindings, groups, hub
+settings and the Zigbee2MQTT import against `hubctl --sim serve` (with
+`--sim-devices`), and compares the integration's import document with
+`hubctl import z2m --out`.
 
 ```sh
 python3.14 -m venv .venv            # or: uv venv --python 3.14 .venv
@@ -303,7 +398,7 @@ git clone --branch hub-v0.4.1 https://github.com/faronov/zigbee-rs-hub.git
 HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl .venv/bin/python -m pytest
 # the same on the EZSP backend's simulated NCP:
 HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl HUBCTL_BACKEND=ezsp \
-    .venv/bin/python -m pytest tests/test_e2e_hubctl.py
+    .venv/bin/python -m pytest tests/test_e2e_hubctl.py tests/test_e2e_network.py
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and
@@ -327,6 +422,9 @@ and the HACS validation.
 
 - No zeroconf discovery until the hub advertises `_zigbee-rs-hub._tcp`.
 - No device triggers yet; remotes and GP switches are `event` entities.
+- No network map card: `scan_topology` returns the map as data.
+- Device records carry no logical type: until a network map lists a
+  device, mains-powered devices count as routers.
 - Renaming a device in HA does not rename it on the hub (`devices/update`).
 - User definitions and Green Power bindings are not exposed in HA, nor are
   the catalog settings (`catalog/config`); use the hub's own tools for them.

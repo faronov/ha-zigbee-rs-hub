@@ -32,6 +32,44 @@ the hub firmware each version needs.
   a fix flow that re-interviews the device; a device offline for more than
   24 hours or gone from the network; a failed catalog update, with a fix
   flow that runs it again. Issues go when the condition does.
+- **Network health.** The hub's **Link quality** and **Last seen** sensors
+  are enabled by default for new devices (RSSI stays disabled; entities
+  already in Home Assistant keep their setting). New diagnostic sensors per
+  Zigbee device, disabled by default: **Network address**, **Interview**
+  (`imported` for migrated devices not heard yet), **Parent** (from the
+  last network map, with link quality, depth and the coordinator's route)
+  and **Interview resumes** (`devices/diagnostics`). On the hub device:
+  **Devices**, **Offline devices** (with their names), **Routers** and
+  **End devices**.
+- `zigbee_rs_hub.scan_topology` runs the hub's network map
+  (`network/topology` job) and returns it as the action's response; the
+  last map (also one the web UI ran) is in the entry diagnostics and feeds
+  the Parent sensors.
+- Bindings and groups from Home Assistant: `zigbee_rs_hub.bind`, `unbind`,
+  `read_bindings`, `group_create`, `group_remove`, `group_add_member`,
+  `group_remove_member`. They wait a few seconds for the device and report
+  each request's state; a sleepy device's request is reported `queued`
+  (sent when it wakes).
+- Hub settings, where the hub has the API, for administrators: the MQTT
+  bridge's broker, port, user name, write-only password and base topic in
+  the entry's options (*Configure* → *MQTT bridge*; never on the event bus
+  or in the entry; the stored password is removed when the broker or user
+  name changes without a new one), an **MQTT bridge** switch and status
+  sensor; Zigbee TX power, NCP log level (hubs with `network/ncp_log`), and
+  a staged **Channel change** select applied by the admin action
+  `zigbee_rs_hub.change_channel` with `confirm: true`. The setting entities
+  refuse changes by users who are not administrators. Entities of features
+  a hub reports only once its NCP session is up are added then.
+- Migration from Zigbee2MQTT (admin): `zigbee_rs_hub.import_from_z2m` reads
+  Zigbee2MQTT's data directory (`path`, else the add-on's `data_path`, else
+  the one default place with data — both `/config/zigbee2mqtt` and
+  `/share/zigbee2mqtt` with data is refused) as `hubctl import z2m` does,
+  previews or applies the import (refused while the Zigbee2MQTT add-on or
+  its MQTT bridge runs, and on a Supervisor installation whose add-on
+  states cannot be read), then gives the hub's devices the areas and the
+  names set in HA of Zigbee2MQTT's MQTT devices.
+- The manifest names `hassio` as an after-dependency (the Zigbee2MQTT
+  add-on's state).
 
 ## 0.6.1 (2026-11-27)
 

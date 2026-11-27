@@ -104,7 +104,8 @@ async def test_devices_and_entities(hass: HomeAssistant, setup_entry: MockConfig
 
     registry = er.async_get(hass)
     lqi = registry.async_get(eid(hass, "sensor", LQI_UID))
-    assert lqi.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    # The hub marks it `enabled_default: false`; HA enables link quality.
+    assert lqi.disabled_by is None
     assert lqi.entity_category is er.EntityCategory.DIAGNOSTIC
     assert (
         registry.async_get(eid(hass, "select", POB_UID)).entity_category is er.EntityCategory.CONFIG

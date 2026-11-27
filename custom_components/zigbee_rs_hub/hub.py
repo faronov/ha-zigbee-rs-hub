@@ -23,9 +23,11 @@ from . import const
 from .api import CannotConnect, HubApiError, HubClient, HubError, InvalidAuth, hub_url
 from .catalog import CatalogUpdater
 from .const import COMMAND_TIMEOUT, CONF_PATH, CONF_SYNC_TIME_ZONE, DEFAULT_PATH, DOMAIN, TOPICS
+from .hub_settings import HubSettings
 from .monitor import HubMonitor
 from .ota import OtaIndex, OtaStreams
 from .time_zone import posix_tz, zone_name
+from .topology import TopologyMap
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,6 +148,10 @@ class ZigbeeRsHub:
         self._ota_created: set[str] = set()
         # Life-cycle events on HA's bus and the repair issues (monitor.py).
         self.monitor = HubMonitor(hass, self)
+        # Device-level entities of the integration (health sensors).
+        self._device_listeners: list[Callable[[str], None]] = []
+        self.settings = HubSettings(self)
+        self.topology = TopologyMap(self)
 
     # Identity
 
@@ -219,6 +225,8 @@ class ZigbeeRsHub:
             if self.supports_automations:
                 await self._load_automations(client)
             await self.catalog.async_connected(client)
+            await self.settings.async_connected(client)
+            await self.topology.async_connected(client)
         except TimeoutError as err:
             await client.close()
             self.client = None
@@ -329,6 +337,13 @@ class ZigbeeRsHub:
         elif topic == "network_state":
             self.network["state"] = event.get("state")
             self._notify_hub()
+        elif topic == "network_updated":
+            # Channel, TX power, a restore: network/info has the new facts.
+            self.entry.async_create_background_task(
+                self.hass, self.async_refresh_network(), f"{DOMAIN} network/info"
+            )
+        elif topic in ("job_done", "job_failed"):
+            self.topology.job_finished(event)
         elif topic == "ota_device":
             rec = event.get("device")
             if isinstance(rec, dict) and rec.get("device"):
@@ -491,10 +506,12 @@ class ZigbeeRsHub:
             serial_number=text(dev.get("ieee") or dev.get("src_id")),
             **via,
         )
+        self._notify_device_listeners(dev["id"])
 
     @callback
     def _remove_device(self, device_id: str) -> None:
         self.devices.pop(device_id, None)
+        self._notify_device_listeners(device_id)
         self.ota.pop(device_id, None)
         self._ota_created.discard(device_id)
         for uid in [u for u, e in self.entities.items() if e.get("device") == device_id]:
@@ -547,6 +564,8 @@ class ZigbeeRsHub:
     def _on_message(self, msg: dict[str, Any]) -> None:
         if msg.get("type") == "ota/block_needed":
             self.ota_streams.block_needed(msg)
+        elif msg.get("type") == "job_result":
+            self.topology.job_result(msg)
 
     async def _async_load_ota(self) -> None:
         """The OTA records of all devices (`ota/devices/list`)."""
@@ -599,6 +618,17 @@ class ZigbeeRsHub:
         """`cb` gets the `entity_event`s of an event entity."""
         self._event_listeners.setdefault(uid, []).append(cb)
         return lambda: self._event_listeners.get(uid, []).remove(cb)
+
+    @callback
+    def add_device_listener(self, cb: Callable[[str], None]) -> Callable[[], None]:
+        """`cb(device_id)` runs when a device record arrives, changes or is removed."""
+        self._device_listeners.append(cb)
+        return lambda: self._device_listeners.remove(cb)
+
+    @callback
+    def _notify_device_listeners(self, device_id: str) -> None:
+        for cb in list(self._device_listeners):
+            cb(device_id)
 
     @callback
     def add_hub_listener(self, cb: Listener) -> Callable[[], None]:

@@ -27,7 +27,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.typing import ConfigType
 
-from . import zha_import
+from . import network_services, zha_import
 from .api import HubError, InvalidAuth
 from .const import (
     ATTR_BASE_URL,
@@ -203,6 +203,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     )
     hass.services.async_register(DOMAIN, SERVICE_REINTERVIEW, reinterview, DEVICE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RECONFIGURE, reconfigure, DEVICE_SCHEMA)
+    network_services.async_setup_services(hass)
     return True
 
 

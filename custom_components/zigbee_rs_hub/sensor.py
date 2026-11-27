@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from . import ZigbeeRsHubConfigEntry
+from . import ZigbeeRsHubConfigEntry, health
 from .entity import HubEntity, ZigbeeRsEntity, capability, enum_or_none, setup_platform
 
 
@@ -29,6 +29,7 @@ async def async_setup_entry(
         async_add_entities([NetworkStateSensor(hub), ChannelSensor(hub), PermitJoinEndsSensor(hub)])
     if hub.catalog.supported:
         async_add_entities([CatalogSensor(hub)])
+    health.async_setup_sensors(entry, async_add_entities)
     setup_platform(entry, "sensor", async_add_entities, ZigbeeRsSensor)
 
 
