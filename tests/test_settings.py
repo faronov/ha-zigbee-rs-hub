@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import (
     MockUser,
     async_capture_events,
 )
+import voluptuous as vol
 
 from custom_components.zigbee_rs_hub.const import DOMAIN
 from homeassistant.auth.const import GROUP_ID_ADMIN, GROUP_ID_USER
@@ -160,6 +161,34 @@ async def test_mqtt_settings_in_the_options(
     diag = await async_get_config_entry_diagnostics(hass, setup_entry)
     assert diag["settings"]["mqtt"]["host"] == "broker.lan"
     assert diag["settings"]["mqtt"]["username"] == "**REDACTED**"
+
+    # The frontend leaves out an optional text field the user emptied: the
+    # form suggests the current values instead of defaulting to them.
+    result = await _mqtt_form(hass, setup_entry)
+    keys = {str(k): k for k in result["data_schema"].schema}
+    for key, value in (("host", "broker.lan"), ("username", "ha")):
+        assert keys[key].default is vol.UNDEFINED, key
+        assert keys[key].description == {"suggested_value": value}
+    assert "suggested_value" not in (keys["password"].description or {})
+    # User name emptied: anonymous, and the stored password goes with it.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"enabled": True, "host": "broker.lan", "port": 1885, "base_topic": "zigbee2mqtt"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert {
+        k: v for k, v in fake_hub.calls("mqtt/config/set")[-1].items() if k not in ("id", "type")
+    } == {"username": "", "password": ""}
+    assert (fake_hub.mqtt["username"], fake_hub.mqtt["password_set"]) == ("", False)
+    # The broker emptied (with the bridge off).
+    result = await _mqtt_form(hass, setup_entry)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"enabled": False, "port": 1885, "base_topic": "zigbee2mqtt"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert {
+        k: v for k, v in fake_hub.calls("mqtt/config/set")[-1].items() if k not in ("id", "type")
+    } == {"enabled": False, "host": ""}
 
 
 async def test_settings_entities_are_for_admins(

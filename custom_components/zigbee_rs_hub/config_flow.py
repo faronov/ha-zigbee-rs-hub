@@ -153,6 +153,8 @@ class ZigbeeRsHubConfigFlow(ConfigFlow, domain=DOMAIN):
 # MQTT bridge fields of the options (mqtt/config/set); the password is
 # write-only: never read back, never stored in the entry.
 MQTT_FIELDS = ("enabled", "host", "port", "username", "base_topic")
+# Optional texts the frontend leaves out when emptied: absent means "".
+MQTT_CLEARABLE = ("host", "username")
 MQTT_PASSWORD = "password"
 MQTT_CLEAR_PASSWORD = "clear_password"
 
@@ -204,6 +206,8 @@ class ZigbeeRsHubOptionsFlow(OptionsFlow):
         placeholders = {"error": ""}
         if user_input is not None:
             user_input["port"] = int(user_input["port"])
+            for key in MQTT_CLEARABLE:
+                user_input.setdefault(key, "")
             changes = {
                 k: user_input[k]
                 for k in MQTT_FIELDS
@@ -230,11 +234,13 @@ class ZigbeeRsHubOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required("enabled", default=bool(values.get("enabled"))): bool,
-                vol.Optional("host", default=str(values.get("host") or "")): TextSelector(),
+                # Suggested, not defaults: a default would fill a field the
+                # user emptied (the frontend leaves it out) with the old value.
+                vol.Optional("host"): TextSelector(),
                 vol.Required("port", default=int(values.get("port") or 1883)): NumberSelector(
                     NumberSelectorConfig(min=1, max=65535, step=1, mode=NumberSelectorMode.BOX)
                 ),
-                vol.Optional("username", default=str(values.get("username") or "")): TextSelector(),
+                vol.Optional("username"): TextSelector(),
                 vol.Optional(MQTT_PASSWORD): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.PASSWORD)
                 ),
@@ -246,7 +252,9 @@ class ZigbeeRsHubOptionsFlow(OptionsFlow):
         )
         return self.async_show_form(
             step_id="mqtt",
-            data_schema=schema,
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {k: str(values.get(k) or "") for k in MQTT_CLEARABLE}
+            ),
             errors=errors,
             description_placeholders=placeholders,
         )
