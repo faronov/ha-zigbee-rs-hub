@@ -38,6 +38,9 @@
       },
       "interview_resumes": {
         "default": "mdi:restart"
+      },
+      "last_backup": {
+        "default": "mdi:archive-clock"
       }
     },
     "switch": {
@@ -113,6 +116,15 @@
     },
     "copy_names_areas": {
       "service": "mdi:rename"
+    },
+    "backup_now": {
+      "service": "mdi:content-save"
+    },
+    "restore_backup": {
+      "service": "mdi:backup-restore"
+    },
+    "ncp_update": {
+      "service": "mdi:chip"
     }
   }
 }

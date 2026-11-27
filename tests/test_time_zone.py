@@ -90,8 +90,13 @@ async def test_entries_without_the_option_leave_the_hub_alone(
     assert fake_hub.time == {"tz": "UTC0", "tz_name": None}
     # Turned on in the options: synced at once.
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["time_zone", "backups"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "time_zone"}
+    )
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    assert result["step_id"] == "time_zone"
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {CONF_SYNC_TIME_ZONE: True}
     )

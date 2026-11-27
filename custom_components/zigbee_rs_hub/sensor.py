@@ -30,6 +30,7 @@ async def async_setup_entry(
     if hub.catalog.supported:
         async_add_entities([CatalogSensor(hub)])
     health.async_setup_sensors(entry, async_add_entities)
+    async_add_entities([LastBackupSensor(hub)])
     setup_platform(entry, "sensor", async_add_entities, ZigbeeRsSensor)
 
 
@@ -178,4 +179,49 @@ class CatalogSensor(HubEntity, SensorEntity):
             "auto_fetch": cat.auto_fetch,
             "last_check": cat.last_check,
             "last_error": cat.last_error,
+        }
+
+
+class LastBackupSensor(HubEntity, SensorEntity):
+    """When the newest backup of the hub's network was kept in Home Assistant."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: Any) -> None:
+        """Sensor of `hub`."""
+        super().__init__(hub, "last_backup")
+
+    async def async_added_to_hass(self) -> None:
+        """Follow the backups."""
+        await super().async_added_to_hass()
+        self.async_on_remove(self.hub.backups.add_listener(self._hub_update))
+
+    @property
+    def available(self) -> bool:
+        """The stored backups are known also while the hub is offline."""
+        return True
+
+    @property
+    def native_value(self) -> Any:
+        """Time of the newest backup."""
+        last = self.hub.backups.last
+        return dt_util.parse_datetime(last["created"]) if last else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The newest backup, the stored files and the last attempt (no keys)."""
+        backups = self.hub.backups
+        last = backups.last or {}
+        attempt = backups.last_attempt
+        return {
+            "file": last.get("file"),
+            "reason": last.get("reason"),
+            "devices": last.get("devices"),
+            "pan_id": last.get("pan_id"),
+            "extended_pan_id": last.get("extended_pan_id"),
+            "channel": last.get("channel"),
+            "backups": [b["file"] for b in backups.backups],
+            "last_attempt": attempt.isoformat() if attempt else None,
+            "last_error": backups.last_error,
         }

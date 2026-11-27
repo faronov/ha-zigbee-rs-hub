@@ -9,6 +9,7 @@ is downloaded by Home Assistant at install time and checked; a hub with
 an image store (8 MB) gets it uploaded, a hub without one gets it
 streamed: Home Assistant serves the blocks while the device downloads.
 The 4 MB images have no OTA server (no `ota` in hub/info): no entities.
+The hub's own firmware and its NCP's are entities of firmware.py.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from homeassistant.helpers.event import async_call_later, async_track_time_inter
 
 from . import ZigbeeRsHubConfigEntry
 from .const import COMMAND_TIMEOUT, DOMAIN
+from .firmware import firmware_entities
 from .hub import ZigbeeRsHub
 from .ota import fetch_image, upload
 
@@ -60,6 +62,18 @@ async def async_setup_entry(
         async_add_entities([ZigbeeRsUpdate(hub, d) for d in device_ids])
 
     hub.register_update_platform(add)
+
+    # The hub's own firmware and its NCP's, once hub/info names the updater
+    # (`maintenance`); hub/info is read again at every connection.
+    added: set[str] = set()
+
+    @callback
+    def add_firmware() -> None:
+        if new := firmware_entities(hub, added):
+            async_add_entities(new)
+
+    add_firmware()
+    entry.async_on_unload(hub.add_hub_listener(add_firmware))
     if hub.supports_ota:
 
         async def refresh(_now: Any = None) -> None:

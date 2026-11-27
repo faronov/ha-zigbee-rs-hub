@@ -27,7 +27,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.typing import ConfigType
 
-from . import network_services, zha_import
+from . import backup, firmware, network_services, zha_import
 from .api import HubError, InvalidAuth
 from .const import (
     ATTR_BASE_URL,
@@ -204,6 +204,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_REINTERVIEW, reinterview, DEVICE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RECONFIGURE, reconfigure, DEVICE_SCHEMA)
     network_services.async_setup_services(hass)
+    backup.async_setup_services(hass)
+    firmware.async_setup_services(hass)
     return True
 
 
@@ -222,8 +224,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZigbeeRsHubConfigEntry) 
     entry.runtime_data = hub
     _adopt_coordinator_ieee(hass, entry, hub)
     entry.async_on_unload(hub.async_stop)
+    await hub.backups.async_load()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    for cancel in hub.catalog.async_start():
+    for cancel in [*hub.catalog.async_start(), *hub.backups.async_start()]:
         entry.async_on_unload(cancel)
     for cancel in hub.monitor.async_start():
         entry.async_on_unload(cancel)

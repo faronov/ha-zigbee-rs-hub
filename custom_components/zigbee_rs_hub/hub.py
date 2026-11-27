@@ -21,6 +21,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from . import const
 from .api import CannotConnect, HubApiError, HubClient, HubError, InvalidAuth, hub_url
+from .backup import BackupManager
 from .catalog import CatalogUpdater
 from .const import COMMAND_TIMEOUT, CONF_PATH, CONF_SYNC_TIME_ZONE, DEFAULT_PATH, DOMAIN, TOPICS
 from .hub_settings import HubSettings
@@ -152,6 +153,9 @@ class ZigbeeRsHub:
         self._device_listeners: list[Callable[[str], None]] = []
         self.settings = HubSettings(self)
         self.topology = TopologyMap(self)
+        # Every subscription event, for the backups' change detection.
+        self._topic_listeners: list[EventListener] = []
+        self.backups = BackupManager(hass, self)
 
     # Identity
 
@@ -295,6 +299,11 @@ class ZigbeeRsHub:
     @callback
     def _on_event(self, event: dict[str, Any], seq: int) -> None:
         self.seq = max(self.seq, seq)
+        for cb in list(self._topic_listeners):
+            try:
+                cb(event)
+            except Exception:
+                _LOGGER.exception("Error in a listener of hub event %s", event.get("topic"))
         topic = event.get("topic")
         if topic == "snapshot":
             self._apply_snapshot(event)
@@ -629,6 +638,12 @@ class ZigbeeRsHub:
     def _notify_device_listeners(self, device_id: str) -> None:
         for cb in list(self._device_listeners):
             cb(device_id)
+
+    @callback
+    def add_topic_listener(self, cb: EventListener) -> Callable[[], None]:
+        """`cb` gets every event of the hub's subscription, the snapshot too."""
+        self._topic_listeners.append(cb)
+        return lambda: self._topic_listeners.remove(cb)
 
     @callback
     def add_hub_listener(self, cb: Listener) -> Callable[[], None]:

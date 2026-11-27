@@ -70,6 +70,40 @@ the hub firmware each version needs.
   names set in HA of Zigbee2MQTT's MQTT devices.
 - The manifest names `hassio` as an after-dependency (the Zigbee2MQTT
   add-on's state).
+- **Backups of the hub's network in Home Assistant.** The network with its
+  keys (`network/backup`: the Open ZigBee Coordinator Backup the hub
+  writes) and a snapshot of the hub's other data are kept in
+  `.storage/zigbee_rs_hub_backups/<entry id>/` (mode 0600), so Home
+  Assistant's own backups carry them: daily, two minutes after a device
+  joined or was removed or the network changed, before a restore or a
+  radio firmware update, and by the new admin action
+  `zigbee_rs_hub.backup_now`; the newest 10 are kept (*Configure* →
+  *Backups*: the interval, on-change backups and how many to keep). A **Last backup** sensor on the hub device shows the newest. Keys
+  are never logged, shown in states or in diagnostics.
+- **`zigbee_rs_hub.restore_backup`** (admin) puts a backup's network back
+  onto the hub's radio (`network/restore`, with the hub's `force`,
+  `confirm`, `confirm_ieee_write_once`, `allow_ieee_change` and
+  `skip_backup`), after a backup of the running network; the hub's backup
+  of the network it replaced is kept too, also when the restore fails.
+- **Hub firmware update** (SONOFF Dongle Max, `zrh-donglem` 0.3.0 or newer):
+  an `update` entity on the hub device offers the newest `hub-v*` release
+  of zigbee-rs-hub, picks this hub's image from the release manifest,
+  checks its SHA-256 (manifest and `SHA256SUMS`), uploads it with progress
+  (`firmware/*`) and reboots the hub; release notes from GitHub. The first
+  update of a Dongle Max, which writes over SONOFF's firmware, needs
+  *Configure* → *Hub firmware* → *Allow the first hub update to replace
+  SONOFF's firmware*. Hubs
+  without the self-update API (ESP32-S3 hub, 4 MB layout) get no entity.
+- **Radio firmware** (SONOFF Dongle Max's MG24, hub firmware after 0.4.1):
+  an `update` entity shows the radio's firmware (EmberZNet or the zigbee-rs
+  NCP) and offers a newer zigbee-rs NCP release when it has a Dongle-M GBL
+  (none yet); the admin action `zigbee_rs_hub.ncp_update` flashes any GBL
+  by URL or file through the hub's NCP updater (`ncp/update/*`): the hub
+  checks the image (`upload_only` stops there), a fresh backup is taken
+  first, `foreign` is needed for images that are not a zigbee-rs NCP
+  (SONOFF's EmberZNet, an NV clear), and the hub carries the network over.
+- *Configure* is always a menu now: *Time zone*, *MQTT bridge* (hubs with
+  it), *Backups* and *Hub firmware* (hubs with the self-update API).
 
 ## 0.6.1 (2026-11-27)
 

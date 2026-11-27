@@ -29,7 +29,19 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import CannotConnect, HubClient, HubError, InvalidAuth, hub_url
-from .const import CONF_PATH, CONF_SYNC_TIME_ZONE, DEFAULT_PATH, DEFAULT_PORT, DOMAIN
+from .const import (
+    BACKUP_INTERVAL_DEFAULT,
+    BACKUP_KEEP_DEFAULT,
+    CONF_BACKUP_INTERVAL,
+    CONF_BACKUP_KEEP,
+    CONF_BACKUP_ON_CHANGE,
+    CONF_PATH,
+    CONF_REPLACE_STOCK,
+    CONF_SYNC_TIME_ZONE,
+    DEFAULT_PATH,
+    DEFAULT_PORT,
+    DOMAIN,
+)
 from .hub import async_fetch_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -160,40 +172,94 @@ MQTT_CLEAR_PASSWORD = "clear_password"
 
 
 class ZigbeeRsHubOptionsFlow(OptionsFlow):
-    """The hub's time zone from Home Assistant; the hub's MQTT bridge.
+    """Time zone, backups, the hub's MQTT bridge and its firmware updates.
 
     Options flows are for administrators and their input is not fired on
     the event bus: the broker's address and credentials go to the hub
     from here, not through entities.
     """
 
+    def _hub(self) -> Any:
+        """The loaded hub."""
+        entry = self.config_entry
+        return entry.runtime_data if entry.state is ConfigEntryState.LOADED else None
+
     def _mqtt_hub(self) -> Any:
         """The loaded hub, when it has the MQTT bridge."""
-        entry = self.config_entry
-        if entry.state is not ConfigEntryState.LOADED:
+        hub = self._hub()
+        if hub is None:
             return None
-        hub = entry.runtime_data
         return hub if hub.settings.supports_mqtt and hub.settings.mqtt is not None else None
 
+    def _firmware_hub(self) -> Any:
+        """The loaded hub, when it has the self-update API (the SONOFF Dongle Max)."""
+        hub = self._hub()
+        return (
+            hub if hub is not None and "firmware" in (hub.info.get("maintenance") or []) else None
+        )
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """A menu with the MQTT bridge, else the time zone form."""
-        if user_input is None and self._mqtt_hub() is not None:
-            return self.async_show_menu(step_id="init", menu_options=["time_zone", "mqtt"])
-        return await self._time_zone("init", user_input)
+        """The menu: time zone and backups; the MQTT bridge and the hub firmware where the hub has them."""
+        menu = ["time_zone"]
+        if self._mqtt_hub() is not None:
+            menu.append("mqtt")
+        menu.append("backups")
+        if self._firmware_hub() is not None:
+            menu.append("hub_firmware")
+        return self.async_show_menu(step_id="init", menu_options=menu)
+
+    def _save(self, user_input: dict[str, Any]) -> ConfigFlowResult:
+        return self.async_create_entry(data={**self.config_entry.options, **user_input})
 
     async def async_step_time_zone(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Whether the hub takes Home Assistant's time zone."""
-        return await self._time_zone("time_zone", user_input)
-
-    async def _time_zone(self, step_id: str, user_input: dict[str, Any] | None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data={**self.config_entry.options, **user_input})
+            return self._save(user_input)
         current = self.config_entry.options.get(CONF_SYNC_TIME_ZONE, False)
         return self.async_show_form(
-            step_id=step_id,
+            step_id="time_zone",
             data_schema=vol.Schema({vol.Required(CONF_SYNC_TIME_ZONE, default=current): bool}),
+        )
+
+    async def async_step_backups(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """How often the network is backed up into Home Assistant, and how many are kept."""
+        if user_input is not None:
+            return self._save(user_input)
+        options = self.config_entry.options
+        return self.async_show_form(
+            step_id="backups",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_BACKUP_INTERVAL,
+                        default=options.get(CONF_BACKUP_INTERVAL, BACKUP_INTERVAL_DEFAULT),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=720)),
+                    vol.Required(
+                        CONF_BACKUP_KEEP, default=options.get(CONF_BACKUP_KEEP, BACKUP_KEEP_DEFAULT)
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
+                    vol.Required(
+                        CONF_BACKUP_ON_CHANGE, default=options.get(CONF_BACKUP_ON_CHANGE, True)
+                    ): bool,
+                }
+            ),
+        )
+
+    async def async_step_hub_firmware(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Whether the hub's first self-update may replace SONOFF's firmware."""
+        if self._firmware_hub() is None:
+            return self.async_abort(reason="not_loaded")
+        if user_input is not None:
+            return self._save(user_input)
+        current = self.config_entry.options.get(CONF_REPLACE_STOCK, False)
+        return self.async_show_form(
+            step_id="hub_firmware",
+            data_schema=vol.Schema({vol.Required(CONF_REPLACE_STOCK, default=current): bool}),
         )
 
     async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

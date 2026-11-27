@@ -73,9 +73,9 @@ jobs:
       - name: hubctl, zdefc and the hub's example definitions are there
         run: test -x "$HUBCTL" && test -x "$(dirname "$HUBCTL")/zdefc" && test -d "$HUB_REPO/definitions/examples"
       - name: End to end on the ZRHP backend (hubctl --sim serve)
-        run: python -m pytest -v tests/test_e2e_hubctl.py tests/test_e2e_network.py tests/test_e2e_ota.py
+        run: python -m pytest -v tests/test_e2e_hubctl.py tests/test_e2e_network.py tests/test_e2e_ota.py tests/test_e2e_backup.py
       - name: End to end on the EZSP backend (hubctl --backend ezsp --sim serve)
-        run: HUBCTL_BACKEND=ezsp python -m pytest -v tests/test_e2e_hubctl.py tests/test_e2e_network.py
+        run: HUBCTL_BACKEND=ezsp python -m pytest -v tests/test_e2e_hubctl.py tests/test_e2e_network.py tests/test_e2e_backup.py
 
   hassfest:
     name: hassfest
