@@ -32,6 +32,39 @@ the hub firmware each version needs.
   a fix flow that re-interviews the device; a device offline for more than
   24 hours or gone from the network; a failed catalog update, with a fix
   flow that runs it again. Issues go when the condition does.
+- **Network health.** The hub's **Link quality** and **Last seen** sensors
+  are enabled by default for new devices (RSSI stays disabled; entities
+  already in Home Assistant keep their setting). New diagnostic sensors per
+  Zigbee device, disabled by default: **Network address**, **Interview**
+  (`imported` for migrated devices not heard yet), **Parent** (from the
+  last network map, with link quality, depth and the coordinator's route)
+  and **Interview resumes** (`devices/diagnostics`). On the hub device:
+  **Devices**, **Offline devices** (with their names), **Routers** and
+  **End devices**.
+- `zigbee_rs_hub.scan_topology` runs the hub's network map
+  (`network/topology` job) and returns it as the action's response; the
+  last map (also one the web UI ran) is in the entry diagnostics and feeds
+  the Parent sensors.
+- Bindings and groups from Home Assistant: `zigbee_rs_hub.bind`, `unbind`,
+  `read_bindings`, `group_create`, `group_remove`, `group_add_member`,
+  `group_remove_member`. They wait a few seconds for the device and report
+  each request's state; a sleepy device's request is reported `queued`
+  (sent when it wakes).
+- Hub settings on the hub device, where the hub has the API: the MQTT
+  bridge (on/off, broker, port, user name, base topic, write-only password;
+  a status sensor), Zigbee TX power, NCP log level (hubs with
+  `network/ncp_log`), and a staged **Channel change** select applied by the
+  admin action `zigbee_rs_hub.change_channel` with `confirm: true`.
+  Entities of features a hub reports only once its NCP session is up are
+  added then.
+- Migration from Zigbee2MQTT (admin): `zigbee_rs_hub.import_from_z2m` reads
+  Zigbee2MQTT's data directory (`database.db`, `coordinator_backup.json`,
+  the friendly names of `configuration.yaml`) as `hubctl import z2m` does,
+  previews or applies the import (refused while the Zigbee2MQTT add-on or
+  its MQTT bridge runs), then gives the hub's devices the areas and the
+  names set in HA of Zigbee2MQTT's MQTT devices.
+- The manifest names `hassio` as an after-dependency (the Zigbee2MQTT
+  add-on's state).
 
 ## 0.6.1 (2026-11-27)
 

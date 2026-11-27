@@ -68,6 +68,19 @@ def _read_file(path: str) -> dict[str, Any]:
         return json.load(f)
 
 
+def import_options(data: dict[str, Any]) -> dict[str, Any]:
+    """The `network/import` options of a service call's fields."""
+    options: dict[str, Any] = {}
+    for key in ("force", "confirm", "confirm_ieee_write_once", "skip_backup", "remove_missing"):
+        if data.get(key):
+            options[key] = True
+    if data.get("keep_ieee"):
+        options["allow_ieee_change"] = False
+    if data.get("reconfigure"):
+        options["reconfigure"] = data["reconfigure"]
+    return options
+
+
 async def async_import_from_zha(
     hass: HomeAssistant, hub: Any, data: dict[str, Any]
 ) -> dict[str, Any]:
@@ -95,14 +108,7 @@ async def async_import_from_zha(
             "the ZHA database has no network backup: create one in ZHA (Configure → Download backup) "
             "and pass it as backup"
         )
-    options: dict[str, Any] = {}
-    for key in ("force", "confirm", "confirm_ieee_write_once", "skip_backup", "remove_missing"):
-        if data.get(key):
-            options[key] = True
-    if data.get("keep_ieee"):
-        options["allow_ieee_change"] = False
-    if data.get("reconfigure"):
-        options["reconfigure"] = data["reconfigure"]
+    options = import_options(data)
     timeout = APPLY_TIMEOUT if apply else PREVIEW_TIMEOUT
 
     async def request(req_type: str, **params: Any) -> Any:
@@ -120,7 +126,7 @@ async def async_import_from_zha(
         )
     if apply:
         areas = {i: a for i, (_, a) in names.items() if a}
-        answer["areas"] = await _apply_areas(hass, hub, areas, overwrite=False, wait=AREA_WAIT)
+        answer["areas"] = await apply_areas(hass, hub, areas, overwrite=False, wait=AREA_WAIT)
         d = result.get("devices", {})
         persistent_notification.async_create(
             hass,
@@ -148,7 +154,7 @@ async def async_import_from_zha(
     return answer
 
 
-async def _apply_areas(
+async def apply_areas(
     hass: HomeAssistant, hub: Any, areas: dict[str, str], overwrite: bool, wait: float
 ) -> int:
     """Areas (by name) of the hub's devices with these IEEEs; waits `wait` s for them."""
@@ -187,4 +193,4 @@ async def async_copy_names_areas(hass: HomeAssistant, hub: Any, overwrite: bool)
         reg.async_update_device(dev.id, name_by_user=name)
         named += 1
     areas = {i: a for i, (_, a) in names.items() if a}
-    return {"names": named, "areas": await _apply_areas(hass, hub, areas, overwrite, wait=0)}
+    return {"names": named, "areas": await apply_areas(hass, hub, areas, overwrite, wait=0)}

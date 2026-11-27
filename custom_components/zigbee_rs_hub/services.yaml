@@ -33,6 +33,240 @@ reconfigure_device:
       selector:
         device:
           integration: zigbee_rs_hub
+scan_topology:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    refresh:
+      default: true
+      selector:
+        boolean:
+    routes:
+      default: true
+      selector:
+        boolean:
+bind:
+  fields: &bind_fields
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: zigbee_rs_hub
+    endpoint:
+      selector:
+        number:
+          min: 1
+          max: 240
+          mode: box
+    clusters:
+      required: true
+      example: "on_off"
+      selector:
+        select:
+          multiple: true
+          custom_value: true
+          options:
+            - on_off
+            - level_control
+            - color_control
+            - scenes
+            - window_covering
+            - thermostat
+            - temperature_measurement
+            - relative_humidity
+            - occupancy_sensing
+            - illuminance_measurement
+            - power_configuration
+    target_device_id:
+      selector:
+        device:
+          integration: zigbee_rs_hub
+    target_endpoint:
+      selector:
+        number:
+          min: 1
+          max: 240
+          mode: box
+    group_id:
+      example: "0x1001"
+      selector:
+        text:
+    wait:
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: s
+unbind:
+  fields: *bind_fields
+read_bindings:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: zigbee_rs_hub
+    wait:
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: s
+group_create:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    name:
+      required: true
+      example: "Kitchen"
+      selector:
+        text:
+    group_id:
+      example: "0x1001"
+      selector:
+        text:
+    hub_member:
+      default: true
+      selector:
+        boolean:
+group_remove:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    group_id:
+      required: true
+      example: "0x1001"
+      selector:
+        text:
+    force:
+      default: false
+      selector:
+        boolean:
+group_add_member:
+  fields:
+    group_id:
+      required: true
+      example: "0x1001"
+      selector:
+        text:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: zigbee_rs_hub
+    endpoint:
+      selector:
+        number:
+          min: 1
+          max: 240
+          mode: box
+    wait:
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: s
+group_remove_member:
+  fields:
+    group_id:
+      required: true
+      example: "0x1001"
+      selector:
+        text:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: zigbee_rs_hub
+    endpoint:
+      selector:
+        number:
+          min: 1
+          max: 240
+          mode: box
+    force:
+      default: false
+      selector:
+        boolean:
+    wait:
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: s
+change_channel:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    channel:
+      selector:
+        number:
+          min: 11
+          max: 26
+          mode: box
+    confirm:
+      required: true
+      default: false
+      selector:
+        boolean:
+import_from_z2m:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: zigbee_rs_hub
+    apply:
+      default: false
+      selector:
+        boolean:
+    path:
+      example: "/share/zigbee2mqtt"
+      selector:
+        text:
+    force:
+      default: false
+      selector:
+        boolean:
+    confirm:
+      default: false
+      selector:
+        boolean:
+    confirm_ieee_write_once:
+      default: false
+      selector:
+        boolean:
+    keep_ieee:
+      default: false
+      selector:
+        boolean:
+    skip_backup:
+      default: false
+      selector:
+        boolean:
+    remove_missing:
+      default: false
+      selector:
+        boolean:
+    reconfigure:
+      default: auto
+      selector:
+        select:
+          options:
+            - auto
+            - always
+            - never
 update_catalog:
   fields:
     config_entry_id:

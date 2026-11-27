@@ -17,6 +17,10 @@ from .hub import ZigbeeRsHub, automation_key
 
 # Platforms whose device classes have names in HA's own translations.
 _DEVICE_CLASS_NAMED = frozenset({"sensor", "binary_sensor", "number", "button"})
+# The hub's device-level diagnostics (endpoint 0) HA enables although the
+# hub marks them `enabled_default: false`: link quality and last seen are
+# the first thing to look at for a device that stopped working.
+ENABLED_DIAGNOSTICS = frozenset({"linkquality", "last_seen"})
 
 
 def setup_platform(
@@ -65,9 +69,10 @@ class ZigbeeRsEntity(Entity):
         self.record = record
         self._attr_unique_id = self.uid
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, record["device"])})
-        self._attr_entity_registry_enabled_default = (
-            record.get("enabled_default", True) is not False
-        )
+        enabled = record.get("enabled_default", True) is not False
+        if record.get("endpoint") == 0 and record.get("key") in ENABLED_DIAGNOSTICS:
+            enabled = True
+        self._attr_entity_registry_enabled_default = enabled
         self._attr_entity_category = enum_or_none(EntityCategory, record.get("category"))
         self._set_name(record)
         self._apply_record(record)
@@ -176,6 +181,17 @@ class HubEntity(Entity):
     @callback
     def _hub_update(self) -> None:
         self.async_write_ha_state()
+
+
+class HubSettingEntity(HubEntity):
+    """A setting of the hub (a config entity on the hub device)."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    async def async_added_to_hass(self) -> None:
+        """Also follow the hub's settings."""
+        await super().async_added_to_hass()
+        self.async_on_remove(self.hub.settings.add_listener(self._hub_update))
 
 
 def setup_automations(

@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ZigbeeRsHubConfigEntry
 from .entity import ZigbeeRsEntity, capability, setup_platform
+from .settings_entities import ChannelChangeSelect, NcpLogLevelSelect, add_when_supported
 
 
 async def async_setup_entry(
@@ -17,7 +18,19 @@ async def async_setup_entry(
     entry: ZigbeeRsHubConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Selects of the hub's devices."""
+    """Selects of the hub's devices; the hub's channel change and NCP log level."""
+    add_when_supported(
+        entry,
+        async_add_entities,
+        lambda hub: hub.settings.supports_channel_change and hub.supports_network,
+        lambda hub: [ChannelChangeSelect(hub)],
+    )
+    add_when_supported(
+        entry,
+        async_add_entities,
+        lambda hub: hub.settings.supports_ncp_log,
+        lambda hub: [NcpLogLevelSelect(hub)],
+    )
     setup_platform(entry, "select", async_add_entities, ZigbeeRsSelect)
 
 

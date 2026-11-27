@@ -1,6 +1,7 @@
 {
   "domain": "zigbee_rs_hub",
   "name": "zigbee-rs hub",
+  "after_dependencies": ["hassio"],
   "categories": ["hubs_protocols.wireless_protocols"],
   "codeowners": ["@faronov"],
   "config_flow": true,

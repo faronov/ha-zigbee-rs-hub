@@ -11,6 +11,9 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from . import ZigbeeRsHubConfigEntry
 from .const import DOMAIN, TO_REDACT
 
+# The MQTT broker's credentials (the hub never returns the password).
+SETTINGS_REDACT = {"username", "password"}
+
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ZigbeeRsHubConfigEntry
@@ -29,8 +32,10 @@ async def async_get_config_entry_diagnostics(
             "entities": list(hub.entities.values()),
             "states": list(hub.states.values()),
             "catalog": hub.catalog.as_dict(),
+            "settings": hub.settings.as_dict(),
+            "topology": hub.topology.last,
         },
-        TO_REDACT,
+        TO_REDACT | SETTINGS_REDACT,
     )
 
 

@@ -100,6 +100,17 @@
       "on_level": {
         "name": "On level"
       },
+      "tx_power": {
+        "name": "Zigbee TX power",
+        "state_attributes": {
+          "requested": {
+            "name": "Requested"
+          }
+        }
+      },
+      "mqtt_port": {
+        "name": "MQTT port"
+      },
       "transition": {
         "name": "Transition time"
       }
@@ -110,6 +121,39 @@
       },
       "power_on_behavior": {
         "name": "Power-on behavior"
+      },
+      "channel_change": {
+        "name": "Channel change",
+        "state_attributes": {
+          "current_channel": {
+            "name": "Current channel"
+          },
+          "pending": {
+            "name": "Pending"
+          }
+        }
+      },
+      "ncp_log_level": {
+        "name": "NCP log level",
+        "state": {
+          "off": "Off",
+          "error": "Error",
+          "warn": "Warning",
+          "info": "Info",
+          "debug": "Debug",
+          "trace": "Trace"
+        },
+        "state_attributes": {
+          "forwarded": {
+            "name": "Forwarded"
+          },
+          "suppressed": {
+            "name": "Suppressed"
+          },
+          "dropped": {
+            "name": "Dropped"
+          }
+        }
       },
       "temperature_display_mode": {
         "name": "Temperature display mode"
@@ -127,6 +171,115 @@
       },
       "rssi": {
         "name": "RSSI"
+      },
+      "devices": {
+        "name": "Devices",
+        "state_attributes": {
+          "zigbee": {
+            "name": "Zigbee"
+          },
+          "green_power": {
+            "name": "Green Power"
+          }
+        }
+      },
+      "offline_devices": {
+        "name": "Offline devices",
+        "state_attributes": {
+          "devices": {
+            "name": "Devices"
+          }
+        }
+      },
+      "routers": {
+        "name": "Routers"
+      },
+      "end_devices": {
+        "name": "End devices"
+      },
+      "mqtt_status": {
+        "name": "MQTT bridge",
+        "state": {
+          "disabled": "Disabled",
+          "low_memory": "Low memory",
+          "waiting_for_hub": "Waiting for the hub",
+          "connecting": "Connecting",
+          "connected": "Connected",
+          "retrying": "Retrying"
+        },
+        "state_attributes": {
+          "broker": {
+            "name": "Broker"
+          },
+          "base_topic": {
+            "name": "Base topic"
+          },
+          "last_error": {
+            "name": "Last error"
+          },
+          "retry_in_s": {
+            "name": "Retry in"
+          },
+          "connects": {
+            "name": "Connects"
+          },
+          "published": {
+            "name": "Published"
+          },
+          "received": {
+            "name": "Received"
+          },
+          "dropped": {
+            "name": "Dropped"
+          },
+          "errors": {
+            "name": "Errors"
+          }
+        }
+      },
+      "network_address": {
+        "name": "Network address"
+      },
+      "interview": {
+        "name": "Interview",
+        "state": {
+          "complete": "Complete",
+          "partial": "Partial",
+          "imported": "Imported, not verified yet",
+          "in_progress": "In progress"
+        }
+      },
+      "parent": {
+        "name": "Parent",
+        "state_attributes": {
+          "parent_nwk": {
+            "name": "Parent address"
+          },
+          "lqi": {
+            "name": "Link quality"
+          },
+          "depth": {
+            "name": "Depth"
+          },
+          "route_next_hop": {
+            "name": "Route next hop"
+          },
+          "route_status": {
+            "name": "Route status"
+          },
+          "scanned": {
+            "name": "Scanned"
+          },
+          "error": {
+            "name": "Scan error"
+          },
+          "map_time": {
+            "name": "Map time"
+          }
+        }
+      },
+      "interview_resumes": {
+        "name": "Interview resumes"
       },
       "network_state": {
         "name": "Network state",
@@ -198,6 +351,28 @@
     "switch": {
       "automation": {
         "name": "Automation {name}"
+      },
+      "mqtt_enabled": {
+        "name": "MQTT bridge"
+      }
+    },
+    "text": {
+      "mqtt_host": {
+        "name": "MQTT broker"
+      },
+      "mqtt_username": {
+        "name": "MQTT user name"
+      },
+      "mqtt_password": {
+        "name": "MQTT password",
+        "state_attributes": {
+          "password_set": {
+            "name": "Password set"
+          }
+        }
+      },
+      "mqtt_base_topic": {
+        "name": "MQTT base topic"
       }
     },
     "update": {
@@ -389,6 +564,258 @@
         "device_id": {
           "name": "Device",
           "description": "The device."
+        }
+      }
+    },
+    "scan_topology": {
+      "name": "Scan network map",
+      "description": "Runs the hub's network map (the coordinator's and every router's neighbour and routing tables, up to 150 s) and returns it; the map is kept for the diagnostics and the Parent sensors.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "refresh": {
+          "name": "Scan",
+          "description": "Scan now; otherwise return the last map the hub kept."
+        },
+        "routes": {
+          "name": "Routes",
+          "description": "Also read the routers' routing tables."
+        }
+      }
+    },
+    "bind": {
+      "name": "Bind",
+      "description": "Binds clusters of a device's endpoint to another device's endpoint or to a group (ZDO Bind_req), e.g. a remote to a light: on_off, level_control, color_control.",
+      "fields": {
+        "device_id": {
+          "name": "Source device",
+          "description": "The device whose binding table changes (a remote, a sensor)."
+        },
+        "endpoint": {
+          "name": "Source endpoint",
+          "description": "Its endpoint; when empty the first one with all the clusters (client clusters first)."
+        },
+        "clusters": {
+          "name": "Clusters",
+          "description": "Cluster IDs or names: on_off, level_control, color_control, … (decimal or 0x…)."
+        },
+        "target_device_id": {
+          "name": "Target device",
+          "description": "The device to bind to (or give a group)."
+        },
+        "target_endpoint": {
+          "name": "Target endpoint",
+          "description": "Its endpoint; when empty the first one serving the clusters."
+        },
+        "group_id": {
+          "name": "Target group",
+          "description": "A Zigbee group ID (decimal or 0x…) instead of a target device."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to wait for the device's answer (a sleepy device answers when it wakes: the request is then reported queued)."
+        }
+      }
+    },
+    "unbind": {
+      "name": "Unbind",
+      "description": "Removes bindings of a device's endpoint (ZDO Unbind_req).",
+      "fields": {
+        "device_id": {
+          "name": "Source device",
+          "description": "The device whose binding table changes (a remote, a sensor)."
+        },
+        "endpoint": {
+          "name": "Source endpoint",
+          "description": "Its endpoint; when empty the first one with all the clusters (client clusters first)."
+        },
+        "clusters": {
+          "name": "Clusters",
+          "description": "Cluster IDs or names: on_off, level_control, color_control, … (decimal or 0x…)."
+        },
+        "target_device_id": {
+          "name": "Target device",
+          "description": "The device to bind to (or give a group)."
+        },
+        "target_endpoint": {
+          "name": "Target endpoint",
+          "description": "Its endpoint; when empty the first one serving the clusters."
+        },
+        "group_id": {
+          "name": "Target group",
+          "description": "A Zigbee group ID (decimal or 0x…) instead of a target device."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to wait for the device's answer (a sleepy device answers when it wakes: the request is then reported queued)."
+        }
+      }
+    },
+    "read_bindings": {
+      "name": "Read bindings",
+      "description": "Reads the device's binding table (Mgmt_Bind_req) and returns it with the requests not answered yet.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The device."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to wait for the device's answer (a sleepy device answers when it wakes: the request is then reported queued)."
+        }
+      }
+    },
+    "group_create": {
+      "name": "Create group",
+      "description": "Creates a Zigbee group on the hub (the hub's endpoint joins it unless hub_member is off).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "The group's name."
+        },
+        "group_id": {
+          "name": "Group ID",
+          "description": "1 to 0xFFF7 (decimal or 0x…); the lowest free one when empty."
+        },
+        "hub_member": {
+          "name": "Hub member",
+          "description": "The hub's endpoint joins the group, so it hears what remotes bound to the group send."
+        }
+      }
+    },
+    "group_remove": {
+      "name": "Remove group",
+      "description": "Asks every member to leave the group, then deletes it.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "group_id": {
+          "name": "Group ID",
+          "description": "The group (decimal or 0x…)."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Delete it at once, without waiting for the members."
+        }
+      }
+    },
+    "group_add_member": {
+      "name": "Add group member",
+      "description": "Adds a device endpoint to a group (ZCL Add Group; a sleepy device gets it when it wakes).",
+      "fields": {
+        "group_id": {
+          "name": "Group ID",
+          "description": "The group (decimal or 0x…)."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "The member."
+        },
+        "endpoint": {
+          "name": "Endpoint",
+          "description": "Its endpoint; when empty the first one with the Groups cluster."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to wait for the device's answer (a sleepy device answers when it wakes: the request is then reported queued)."
+        }
+      }
+    },
+    "group_remove_member": {
+      "name": "Remove group member",
+      "description": "Removes a device endpoint from a group (ZCL Remove Group).",
+      "fields": {
+        "group_id": {
+          "name": "Group ID",
+          "description": "The group (decimal or 0x…)."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "The member."
+        },
+        "endpoint": {
+          "name": "Endpoint",
+          "description": "Its endpoint; when empty its membership in the group."
+        },
+        "force": {
+          "name": "Force",
+          "description": "Drop it at once, also if the device does not answer."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to wait for the device's answer (a sleepy device answers when it wakes: the request is then reported queued)."
+        }
+      }
+    },
+    "change_channel": {
+      "name": "Change Zigbee channel",
+      "description": "Moves the whole network to another channel (Mgmt_NWK_Update_req). Every device must follow: routers within about 10 s, sleepy devices when they wake, some only after a rejoin. Take a backup first.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "channel": {
+          "name": "Channel",
+          "description": "11 to 26; when empty the one selected in the hub's Channel change entity."
+        },
+        "confirm": {
+          "name": "Confirm",
+          "description": "Must be on: the network really moves."
+        }
+      }
+    },
+    "import_from_z2m": {
+      "name": "Import from Zigbee2MQTT",
+      "description": "Moves Zigbee2MQTT's network and devices to the hub without pairing them again: reads its data directory (database.db, coordinator_backup.json, the friendly names of configuration.yaml). Without apply it only previews. Applying needs Zigbee2MQTT stopped (two coordinators must never run one network); then the hub's new devices take the areas of Zigbee2MQTT's MQTT devices.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The hub (needed with more than one)."
+        },
+        "apply": {
+          "name": "Apply",
+          "description": "Import; otherwise preview only."
+        },
+        "path": {
+          "name": "Data directory",
+          "description": "Zigbee2MQTT's data directory; when empty /share/zigbee2mqtt or zigbee2mqtt in the configuration directory (the add-on's)."
+        },
+        "force": {
+          "name": "Replace the running network",
+          "description": "The hub's radio runs another network: replace it (it is backed up first)."
+        },
+        "confirm": {
+          "name": "Re-tag records",
+          "description": "The hub's device registry holds another network's records: re-tag them as the imported network's."
+        },
+        "confirm_ieee_write_once": {
+          "name": "Write the coordinator IEEE once",
+          "description": "EmberZNet radios: write Zigbee2MQTT's coordinator IEEE to the one-time token (irreversible)."
+        },
+        "keep_ieee": {
+          "name": "Keep this radio's IEEE",
+          "description": "Do not take Zigbee2MQTT's coordinator IEEE: the devices are configured again."
+        },
+        "skip_backup": {
+          "name": "Skip the backup",
+          "description": "Do not back up the network the import replaces."
+        },
+        "remove_missing": {
+          "name": "Remove other devices",
+          "description": "Remove the hub's devices that are not in Zigbee2MQTT."
+        },
+        "reconfigure": {
+          "name": "Configure again",
+          "description": "auto: when the coordinator IEEE changed; always; never."
         }
       }
     },
