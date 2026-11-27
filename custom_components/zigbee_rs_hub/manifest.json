@@ -3,10 +3,10 @@
   "name": "zigbee-rs hub",
   "codeowners": ["@faronov"],
   "config_flow": true,
-  "documentation": "https://github.com/faronov/zigbee-rs-hub/tree/main/integrations/home-assistant",
+  "documentation": "https://github.com/faronov/ha-zigbee-rs-hub",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/faronov/zigbee-rs-hub/issues",
+  "issue_tracker": "https://github.com/faronov/ha-zigbee-rs-hub/issues",
   "requirements": [],
-  "version": "0.6.0"
+  "version": "0.6.1"
 }

@@ -1,7 +1,9 @@
 """End to end against the real API server: `hubctl --sim serve`.
 
-Runs when `HUBCTL` names a hubctl binary (CI builds one); skipped otherwise.
-`HUBCTL_BACKEND=ezsp` runs the hub on the EZSP backend's simulated NCP
+Runs when `HUBCTL` names a hubctl binary (CI builds one from a zigbee-rs-hub
+checkout); skipped otherwise. The catalog test also needs `zdefc` and the
+hub's `definitions/examples` (`HUB_REPO`, by default the checkout hubctl was
+built in). `HUBCTL_BACKEND=ezsp` runs the hub on the EZSP backend's simulated NCP
 (`hubctl --backend ezsp --sim`) instead of the ZRHP one.
 """
 
@@ -31,7 +33,12 @@ from .fake_hub import ReleaseServer
 HUBCTL = os.environ.get("HUBCTL")
 # zdefc builds the test catalog release (next to hubctl by default).
 ZDEFC = os.environ.get("ZDEFC") or (str(Path(HUBCTL).with_name("zdefc")) if HUBCTL else None)
-REPO = Path(__file__).resolve().parents[3]
+# The zigbee-rs-hub checkout (<hub>/target/debug/hubctl by default): the test
+# catalog is built from its example definitions.
+HUB_REPO = os.environ.get("HUB_REPO") or (
+    str(Path(HUBCTL).resolve().parents[2]) if HUBCTL else None
+)
+EXAMPLES = Path(HUB_REPO) / "definitions" / "examples" if HUB_REPO else None
 BACKEND = os.environ.get("HUBCTL_BACKEND", "zrhp")
 # The simulated NCP's IEEE address and product name, per backend.
 SIM_COORDINATOR_IEEE, SIM_NCP = {
@@ -176,9 +183,11 @@ async def _run(*args: str) -> str:
 
 
 @pytest.mark.skipif(not ZDEFC or not Path(ZDEFC).exists(), reason="no zdefc binary")
+@pytest.mark.skipif(not EXAMPLES or not EXAMPLES.is_dir(), reason="no hub definitions (HUB_REPO)")
 async def test_hubctl_catalog_update(hass: HomeAssistant, tmp_path: Path) -> None:
     """A signed release built by zdefc, served over HTTP, installed through HA."""
     assert ZDEFC
+    assert EXAMPLES
     key = tmp_path / "test.key"
     await _run(ZDEFC, "bank", "keygen", "-o", str(key))
     out = await _run(ZDEFC, "bank", "pubkey", "--key", str(key))
@@ -198,7 +207,7 @@ async def test_hubctl_catalog_update(hass: HomeAssistant, tmp_path: Path) -> Non
         "3",
         "--name",
         "bank-4m.zdb",
-        str(REPO / "definitions" / "examples"),
+        str(EXAMPLES),
     )
     release = ReleaseServer({p.name: p.read_bytes() for p in rel.iterdir() if p.is_file()})
     await release.start()

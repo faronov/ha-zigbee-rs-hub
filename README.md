@@ -1,9 +1,12 @@
 # zigbee-rs hub for Home Assistant
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=faronov&repository=ha-zigbee-rs-hub&category=integration)
+
 A Home Assistant custom integration (`zigbee_rs_hub`) for
-[zigbee-rs-hub](../../README.md): the ESP32-S3 hub with an ESP32-H2 NCP, or
-`hubctl serve` on a desktop. It is a thin bridge over the hub's WebSocket
-JSON API (`docs/device-support.md`, sections 4 and 14–15): no Zigbee logic and
+[zigbee-rs-hub](https://github.com/faronov/zigbee-rs-hub): the ESP32-S3 hub with an ESP32-H2 NCP, the SONOFF
+Dongle Max, or `hubctl serve` on a desktop. It is a thin bridge over the hub's
+WebSocket JSON API ([`docs/device-support.md`](https://github.com/faronov/zigbee-rs-hub/blob/main/docs/device-support.md),
+sections 4 and 14–15): no Zigbee logic and
 no per-device code in Home Assistant; the hub decides which entities a device
 has, and the integration maps them 1:1 onto HA platforms.
 
@@ -50,7 +53,7 @@ has, and the integration maps them 1:1 onto HA platforms.
   router to join through), `zigbee_rs_hub.reinterview_device`,
   `zigbee_rs_hub.reconfigure_device`, `zigbee_rs_hub.update_catalog`.
 - Migration from ZHA without pairing again
-  ([`docs/migration.md`](../../docs/migration.md)):
+  ([`docs/migration.md`](https://github.com/faronov/zigbee-rs-hub/blob/main/docs/migration.md)):
   `zigbee_rs_hub.import_from_zha` reads ZHA's `zigbee.db` (zigpy schemas
   v12–v17) and its newest network backup (or `backup`, a file of ZHA's
   Download backup), with the names and areas of ZHA's devices in HA's
@@ -106,36 +109,101 @@ has, and the integration maps them 1:1 onto HA platforms.
 ## Requirements
 
 - Home Assistant 2025.1 or newer (tested with 2026.10).
-- Hub firmware with the WebSocket API in hub mode (`tbr-hub`), Wi-Fi
-  configured (console `wifi set <ssid> <password>`). The API token is shown
-  by the hub console command `token` (CDC 1).
+- Hub firmware with the WebSocket API in hub mode (`tbr-hub`, `zrh-donglem`),
+  Wi-Fi configured (console `wifi set <ssid> <password>`). The API token is
+  shown by the hub console command `token` (CDC 1).
 - The hub does not advertise itself over mDNS yet, so the hub is added
   manually (no zeroconf discovery).
 
+### Compatibility
+
+The integration asks the hub what it offers (`hub/info`, the API version)
+and leaves out what an older hub lacks, so a newer integration also connects
+to an older hub. Until the split into this repository it was released with
+the hub firmware ([zigbee-rs-hub releases](https://github.com/faronov/zigbee-rs-hub/releases)):
+
+| Integration | Released with hub firmware | Hub firmware for all its features |
+|---|---|---|
+| 0.6.1 | — (this repository; same code as 0.6.0) | 0.4.0 or newer; CI runs against `hub-v0.4.1` |
+| 0.6.0 | 0.4.0, 0.4.1 | 0.4.0 |
+| 0.5.0 | 0.3.0 | 0.3.0 |
+| 0.4.0 | 0.2.0 | 0.2.0 |
+| 0.3.0 | 0.1.3 – 0.1.8 | 0.1.3 |
+| 0.2.1 | 0.1.1, 0.1.2 | 0.1.1 |
+| 0.1.0 | 0.1.0 | 0.1.0 |
+
+What needs which hub firmware:
+
+| Feature | Hub firmware |
+|---|---|
+| Devices, entities, commands, Permit join button, services, diagnostics | 0.1.0 |
+| Network facts: Permit join state, Permit join ends, Network state, Channel (API 1.1) | 0.1.1 |
+| Definitions catalog client (`update_catalog`, Catalog version sensor) | 0.1.3 |
+| Hub automations (API 1.3), Zigbee groups and their scenes | 0.2.0 |
+| Firmware `update` entities (8 MB images only), hub time zone from HA | 0.3.0 |
+| `import_from_zha`, `copy_names_areas` | 0.4.0 |
+
+Use the newest hub release with the newest integration; the end-to-end
+tests run against the hub release named in `HUB_REF` of
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
 ## Installation
 
-This directory is not a HACS repository of its own (HACS needs
-`custom_components/` at a repository root); `hacs.json` is ready for a
-future split. Install manually:
+### HACS (recommended)
 
-1. Copy `custom_components/zigbee_rs_hub` into Home Assistant's
-   configuration directory, so that the result is
-   `/config/custom_components/zigbee_rs_hub/manifest.json`. For example, with
-   the Samba or SSH add-on:
+The repository is a HACS custom repository (it is not in the HACS default
+list):
 
-   ```sh
-   scp -r integrations/home-assistant/custom_components/zigbee_rs_hub \
-       root@<ha-host>:/config/custom_components/
-   ```
-
-2. Restart Home Assistant (*Settings → System → Restart*); custom
+1. In Home Assistant open **HACS**, the **⋮** menu (top right) →
+   **Custom repositories**.
+2. Repository `https://github.com/faronov/ha-zigbee-rs-hub`, type
+   **Integration** → **Add**. (Or use the *Open in HACS* button at the top
+   of this page.)
+3. Search HACS for **zigbee-rs hub**, open it and **Download** (the newest
+   release is preselected).
+4. Restart Home Assistant (*Settings → System → Restart*); custom
    integrations are only loaded at start-up.
-3. *Settings → Devices & services → Add integration → zigbee-rs hub*:
+5. *Settings → Devices & services → Add integration → zigbee-rs hub*:
    host = the hub's IP address, port = `80` (`8099` for `hubctl serve`),
    API token = the output of the hub console `token`.
 
+HACS shows new releases of this repository as updates (*Settings →
+Updates*); install, then restart Home Assistant.
+
+### Manual
+
+1. Download `custom_components/zigbee_rs_hub` of a
+   [release](https://github.com/faronov/ha-zigbee-rs-hub/releases) (the
+   source archive) and copy it into Home Assistant's configuration
+   directory, so that the result is
+   `/config/custom_components/zigbee_rs_hub/manifest.json`. For example, with
+   the SSH add-on:
+
+   ```sh
+   scp -r custom_components/zigbee_rs_hub root@<ha-host>:/config/custom_components/
+   ```
+
+2. Restart Home Assistant, then add the integration as in step 5 above.
+
 Updating is the same copy followed by a restart. To remove the integration,
 delete the entry, then the directory, then restart.
+
+### Moving from a manual install to HACS
+
+Earlier versions were installed by copying `custom_components/zigbee_rs_hub`
+out of the hub repository (`integrations/home-assistant`). The domain is
+still `zigbee_rs_hub`, so the existing config entry, its devices, entities,
+areas and names, and the OTA downloads in `.storage/zigbee_rs_hub_ota/` are
+kept:
+
+1. Keep the config entry (do not delete the integration).
+2. Add this repository to HACS and **Download** as above. The directory need
+   not be removed first: HACS moves the existing
+   `/config/custom_components/zigbee_rs_hub` aside, writes the release's files
+   and puts the old directory back only if the download fails.
+3. Restart Home Assistant.
+
+From then on HACS tracks the installed version.
 
 ## How the hub API maps onto Home Assistant
 
@@ -176,21 +244,42 @@ diagnostics and the catalog client (with a local HTTP mirror; the fake hub
 refuses chunks over 4 KiB). `tests/test_e2e_hubctl.py` runs against the
 real API server, `hubctl --sim serve` (simulated NCP; with
 `--sim-devices` simulated plugs for the automations test), when `HUBCTL`
-names a hubctl binary; its catalog test also needs `zdefc` (next to hubctl, or
-`ZDEFC`) to build and sign a test release.
+names a hubctl binary built from a [zigbee-rs-hub](https://github.com/faronov/zigbee-rs-hub) checkout;
+its catalog test also needs `zdefc` (next to hubctl, or `ZDEFC`) to build and
+sign a test release from the hub's `definitions/examples` (`HUB_REPO`, by
+default the checkout hubctl was built in). `tests/test_e2e_ota.py` runs
+`hubctl --sim --sim-ota serve` (a simulated device with an OTA client).
 
 ```sh
-cd integrations/home-assistant
 python3.14 -m venv .venv            # or: uv venv --python 3.14 .venv
 .venv/bin/pip install -r requirements-test.txt
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/python -m pytest
-# end to end against the simulated hub:
-cargo build -p hubctl -p zdefc
-HUBCTL=$PWD/../../target/debug/hubctl .venv/bin/python -m pytest
+# end to end against the simulated hub (zigbee-rs-hub/ is git-ignored):
+git clone --branch hub-v0.4.1 https://github.com/faronov/zigbee-rs-hub.git
+(cd zigbee-rs-hub && cargo build -p hubctl -p zdefc)
+HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl .venv/bin/python -m pytest
+# the same on the EZSP backend's simulated NCP:
+HUBCTL=$PWD/zigbee-rs-hub/target/debug/hubctl HUBCTL_BACKEND=ezsp \
+    .venv/bin/python -m pytest tests/test_e2e_hubctl.py
 ```
 
-CI runs the same in the `home-assistant` job of `.github/workflows/ci.yml`.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and
+pytest, the end-to-end tests on both backends against the hub release in
+`HUB_REF` (a workflow input or repository variable overrides it), hassfest
+and the HACS validation.
+
+### Releasing
+
+1. Set `version` in `custom_components/zigbee_rs_hub/manifest.json` and add
+   its section `## X.Y.Z (date)` to [CHANGELOG.md](CHANGELOG.md); update the
+   compatibility table when the minimum hub firmware changes.
+2. Merge to `main` with CI green, then push the tag `vX.Y.Z`.
+3. The release workflow checks the tag against the manifest and publishes
+   the GitHub release with the CHANGELOG section as its notes; HACS offers it
+   as an update.
+
+
 
 ## Limitations
 
@@ -199,3 +288,8 @@ CI runs the same in the `home-assistant` job of `.github/workflows/ci.yml`.
 - Renaming a device in HA does not rename it on the hub (`devices/update`).
 - User definitions and Green Power bindings are not exposed in HA, nor are
   the catalog settings (`catalog/config`); use the hub's own tools for them.
+
+## License
+
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or
+[MIT](LICENSE-MIT) at your option, like zigbee-rs-hub.

@@ -1,0 +1,45 @@
+name: Release
+
+# A tag vX.Y.Z publishes the GitHub release HACS offers: the tag must match
+# the manifest's version, and the notes are the version's CHANGELOG.md section.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version and take the notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          manifest=$(jq -r .version custom_components/zigbee_rs_hub/manifest.json)
+          if [ "$manifest" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but manifest.json has version $manifest"
+            exit 1
+          fi
+          # The body of "## X.Y.Z" (a heading may continue after the version) up to the next "## ".
+          awk -v v="$version" '
+            /^## / { if (found) exit; found = ($2 == v); next }
+            found { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' >notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(--verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md)
+          case "$GITHUB_REF_NAME" in *-*) args+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"

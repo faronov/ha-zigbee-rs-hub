@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, for changes in Home Assistant's hassfest and in the HACS validation.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      hub_ref:
+        description: "zigbee-rs-hub ref (tag, branch or SHA) for the end-to-end tests"
+        required: false
+        default: ""
+
+env:
+  # The hub the end-to-end tests run against: the workflow input, else the
+  # repository variable HUB_REF, else the latest hub release.
+  HUB_REF: ${{ inputs.hub_ref || vars.HUB_REF || 'hub-v0.4.1' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ruff, pytest (fake hub)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # pytest-homeassistant-custom-component follows HA's Python.
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: python -m pytest -v
+
+  e2e:
+    name: End to end against hubctl --sim serve (ZRHP and EZSP)
+    runs-on: ubuntu-latest
+    env:
+      HUBCTL: ${{ github.workspace }}/zigbee-rs-hub/target/debug/hubctl
+      HUB_REPO: ${{ github.workspace }}/zigbee-rs-hub
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out zigbee-rs-hub (${{ env.HUB_REF }})
+        uses: actions/checkout@v4
+        with:
+          repository: faronov/zigbee-rs-hub
+          ref: ${{ env.HUB_REF }}
+          path: zigbee-rs-hub
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zigbee-rs-hub
+          key: ${{ env.HUB_REF }}
+      - name: Build hubctl and zdefc (the simulated hub; zdefc signs a test catalog)
+        working-directory: zigbee-rs-hub
+        run: |
+          cargo build -p hubctl -p zdefc
+          git log -1 --format='zigbee-rs-hub %H %s'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt
+      # The end-to-end tests skip themselves without these; here they must run.
+      - name: hubctl, zdefc and the hub's example definitions are there
+        run: test -x "$HUBCTL" && test -x "$(dirname "$HUBCTL")/zdefc" && test -d "$HUB_REPO/definitions/examples"
+      - name: End to end on the ZRHP backend (hubctl --sim serve)
+        run: python -m pytest -v tests/test_e2e_hubctl.py tests/test_e2e_ota.py
+      - name: End to end on the EZSP backend (hubctl --backend ezsp --sim serve)
+        run: HUBCTL_BACKEND=ezsp python -m pytest -v tests/test_e2e_hubctl.py
+
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # Brand assets live in home-assistant/brands, which this custom
+          # repository is not part of.
+          ignore: brands
