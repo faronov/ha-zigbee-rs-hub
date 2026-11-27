@@ -1,8 +1,10 @@
 {
   "domain": "zigbee_rs_hub",
   "name": "zigbee-rs hub",
+  "categories": ["hubs_protocols.wireless_protocols"],
   "codeowners": ["@faronov"],
   "config_flow": true,
+  "connectivity": ["zigbee"],
   "documentation": "https://github.com/faronov/ha-zigbee-rs-hub",
   "integration_type": "hub",
   "iot_class": "local_push",

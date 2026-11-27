@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "zigbee-rs hub",
-        "description": "Адрес WebSocket API хаба (`ws://<host>:<port>/api`). Токен API показывает команда консоли хаба `token`.",
+        "description": "Адрес WebSocket API хаба (`ws://HOST:PORT/api`). Токен API показывает команда консоли хаба `token`.",
         "data": {
           "host": "Хост",
           "port": "Порт",

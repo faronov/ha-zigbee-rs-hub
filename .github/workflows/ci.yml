@@ -27,8 +27,8 @@ jobs:
     name: ruff, pytest (fake hub)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           # pytest-homeassistant-custom-component follows HA's Python.
           python-version: "3.14"
@@ -46,9 +46,9 @@ jobs:
       HUBCTL: ${{ github.workspace }}/zigbee-rs-hub/target/debug/hubctl
       HUB_REPO: ${{ github.workspace }}/zigbee-rs-hub
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check out zigbee-rs-hub (${{ env.HUB_REF }})
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: faronov/zigbee-rs-hub
           ref: ${{ env.HUB_REF }}
@@ -63,7 +63,7 @@ jobs:
         run: |
           cargo build -p hubctl -p zdefc
           git log -1 --format='zigbee-rs-hub %H %s'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
@@ -81,7 +81,7 @@ jobs:
     name: hassfest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: home-assistant/actions/hassfest@master
 
   hacs:

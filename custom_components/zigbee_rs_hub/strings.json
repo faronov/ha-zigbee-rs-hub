@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "zigbee-rs hub",
-        "description": "Address of the hub's WebSocket API (`ws://<host>:<port>/api`). The API token is shown by the hub console command `token`.",
+        "description": "Address of the hub's WebSocket API (`ws://HOST:PORT/api`). The API token is shown by the hub console command `token`.",
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]",

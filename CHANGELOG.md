@@ -14,8 +14,10 @@ the hub firmware each version needs.
   moved from the hub repository to
   [faronov/ha-zigbee-rs-hub](https://github.com/faronov/ha-zigbee-rs-hub), a
   HACS custom repository (category Integration); the manifest's
-  documentation and issue tracker point here. No functional change from
-  0.6.0.
+  documentation and issue tracker point here, and it names its category
+  (Hubs & protocols › Wireless protocols) and connectivity (Zigbee). No
+  functional change from 0.6.0; the config flow writes the hub's address as
+  `ws://HOST:PORT/api` (hassfest takes `<host>` for HTML).
 - **Upgrading from a manual install:** the domain is still `zigbee_rs_hub`,
   so the config entry, devices and entities are kept. Add the repository to
   HACS and download; HACS replaces the copied directory (README, *Moving
