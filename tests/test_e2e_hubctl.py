@@ -486,16 +486,20 @@ async def test_hubctl_definition_repairs(hass: HomeAssistant, tmp_path: Path) ->
         await hass.services.async_call(DOMAIN, "update_catalog", {}, blocking=True)
         await hass.async_block_till_done()
         assert issue("catalog_failed") is None
-        # The example definitions have the plug only.
-        for device in (Z2M_SENSOR, Z2M_LIGHT, Z2M_REMOTE):
-            assert issue("no_definition", device) is not None, device
-        assert issue("no_definition", Z2M_PLUG) is None
+        # The example definitions have the plug only: one issue lists the others.
+        generic = issue("no_definition")
+        assert generic is not None
+        assert generic.translation_placeholders["count"] == "3"
+        listed = generic.translation_placeholders["devices"]
+        for name in ("lumi.weather", "TRADFRI bulb E27 WS opal 980lm", "Remote Control N2"):
+            assert f"- {name} (" in listed, listed
+        assert "SP 120" not in listed
         missing = {e.data["device"] for e in events if e.data["type"] == "definition_missing"}
         assert missing == {Z2M_SENSOR, Z2M_LIGHT, Z2M_REMOTE}
 
         await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
-        assert issue("no_definition", Z2M_SENSOR) is None
+        assert issue("no_definition") is None
     finally:
         await hub.stop()
         await release.stop()

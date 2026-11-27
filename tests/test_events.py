@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+from typing import Any
+
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_capture_events,
+    async_fire_time_changed,
     async_mock_service,
 )
 
@@ -19,6 +23,7 @@ from homeassistant.components.device_automation import (
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 
 from .fake_hub import ACTION_UID, REMOTE_DEV, FakeHub, device, entity
 from .test_init import wait_for
@@ -152,7 +157,8 @@ async def test_life_cycle_events(
     await fake_hub.push("devices", {"topic": "device_updated", "device": dict(done, nwk=0x5678)})
     await wait_for(hass, lambda: len(events) == 5)
     assert kinds()[3:] == ["device_left", "device_rejoined"]
-    # A second leave within a minute: no second event.
+    # Gone again and back within the minute: nothing more (the last event,
+    # the rejoin, holds again).
     await fake_hub.push(
         "devices",
         {
@@ -185,6 +191,43 @@ async def test_life_cycle_events(
     await wait_for(hass, lambda: fake_hub.connections > connections)
     await wait_for(hass, lambda: setup_entry.runtime_data.connected)
     assert len(events) == 8
+
+
+async def test_flapping_device(
+    hass: HomeAssistant, fake_hub: FakeHub, setup_entry: MockConfigEntry
+) -> None:
+    """Leaves, rejoins and leaves again within a minute: the last event says left."""
+    events = async_capture_events(hass, EVENT_HUB)
+    hub = setup_entry.runtime_data
+    rec = dict(fake_hub.devices[REMOTE_DEV], nwk=0x1001)
+    left = dict(rec, available=False, unavailable_reason="left")
+
+    async def update(record: dict[str, Any]) -> None:
+        await fake_hub.push("devices", {"topic": "device_updated", "device": record})
+        await wait_for(hass, lambda: hub.devices[REMOTE_DEV] == record)
+
+    def kinds() -> list[str]:
+        return [e.data["type"] for e in events]
+
+    await update(rec)
+    await update(left)
+    await update(dict(rec, nwk=0x2002))
+    # A new address right after the rejoin: not a second rejoin.
+    await update(dict(rec, nwk=0x3003))
+    await update(left)
+    assert kinds() == ["device_left", "device_rejoined"]
+    # The minute ends: the device's state is reported.
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+    assert kinds() == ["device_left", "device_rejoined", "device_left"]
+
+    # Back and gone again before the next window ends: its state is the one
+    # reported last, so nothing more.
+    await update(dict(rec, nwk=0x3003))
+    await update(left)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=122))
+    await hass.async_block_till_done()
+    assert kinds() == ["device_left", "device_rejoined", "device_left"]
 
 
 async def test_definition_removed_and_groups(

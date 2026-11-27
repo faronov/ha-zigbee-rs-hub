@@ -304,8 +304,8 @@
       }
     },
     "no_definition": {
-      "title": "{name} has no device definition",
-      "description": "The definitions catalog of {hub} has nothing for {name} ({model}): the device runs on the hub's generic Zigbee support only, so device-specific entities and settings may be missing. If something is missing, ask for a definition (attach the device's diagnostics) or upload your own in the hub's web UI.\n\nThis issue goes once the device has a definition."
+      "title": "Devices without a device definition on {hub}",
+      "description": "The definitions catalog of {hub} has nothing for these devices ({count}):\n\n{devices}\n\nThey run on the hub's generic Zigbee support only, so device-specific entities and settings may be missing. If something is missing, ask for a definition (attach the device's diagnostics) or upload your own in the hub's web UI.\n\nA device leaves this list once it has a definition."
     },
     "definition_refused": {
       "title": "The definition of {name} needs newer hub firmware",

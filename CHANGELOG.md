@@ -23,10 +23,12 @@ the hub firmware each version needs.
   `definition_missing` and `hub_crashed`, each with a logbook entry on the
   device. Derived from the hub's device records, `interview_progress`, the
   catalog status and `hub/system` (the hub has no join, leave or announce
-  events); a device's leave or rejoin at most once a minute.
+  events); a flapping device's leaves and rejoins at most two a minute, the
+  state at the minute's end fired if it changed since.
 - **Repairs**: the hub restarted after a crash (`hub/system`
-  `reset_reason`); a device without a definition (none in the catalog, or
-  refused with the reason); an interview partial for more than 2 hours, with
+  `reset_reason`); the devices without a definition in the catalog (one
+  issue listing them); a device whose definition this firmware cannot run
+  (one each, with the reason); an interview partial for more than 2 hours, with
   a fix flow that re-interviews the device; a device offline for more than
   24 hours or gone from the network; a failed catalog update, with a fix
   flow that runs it again. Issues go when the condition does.

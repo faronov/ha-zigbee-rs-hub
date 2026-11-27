@@ -20,21 +20,26 @@ describes them):
 | `definition_missing`  | catalog/status `missing`: nothing to fetch, or refused    |
 | `hub_crashed`         | hub/system `reset_reason`: panic, watchdog, brownout      |
 
-A device's leave or rejoin is fired at most once a minute. Every
-`entity_event` of an event entity is fired as `zigbee_rs_hub_action`
-(`type` = the event type, `subtype` as in device_trigger.py).
+A device's leaves and rejoins: at most two a minute; a change past that is
+fired when the minute ends, if it still holds (the last event always tells
+the device's state), and a rejoin right after one (a new NWK address) is
+not repeated. Every `entity_event` of an event entity is fired as
+`zigbee_rs_hub_action` (`type` = the event type, `subtype` as in
+device_trigger.py).
 
-Repair issues: the hub's last reset was a crash; a device without a
-definition (generic only, or the catalog's matches need features this
-firmware lacks); an interview partial for hours (fix: re-interview); a
-device offline for a day or gone (left); the last catalog update failed
-(fix: retry). They go when the condition does.
+Repair issues: the hub's last reset was a crash; the devices without a
+definition (generic only: one issue listing them; a device whose catalog
+matches need features this firmware lacks: one each); an interview partial
+for hours (fix: re-interview); a device offline for a day or gone (left);
+the last catalog update failed (fix: retry). They go when the condition
+does.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
+from functools import partial
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -67,9 +72,10 @@ CRASH_REASONS = {
     9: "brownout",
     15: "CPU lock-up",
 }
-# A device that keeps leaving and rejoining: one event a minute. The others
-# are transitions the hub itself spaces out (interview resumptions).
-_RATE_LIMITED = frozenset({"device_left", "device_rejoined"})
+# Leave/rejoin events of a device sent in `const.EVENT_DEDUPE`, at most.
+_PRESENCE_BURST = 2
+# Devices listed in the issue of the devices without a definition, at most.
+_LIST_MAX = 20
 # Two boot times this close are the same boot (HA's clock minus `uptime_s`).
 _SAME_BOOT = 120.0
 # After an interview that left a device generic only: read the catalog's
@@ -84,7 +90,6 @@ ISSUE_INTERVIEW_PARTIAL = "interview_partial"
 ISSUE_DEVICE_OFFLINE = "device_offline"
 ISSUE_DEVICE_LEFT = "device_left"
 _DEVICE_ISSUES = (
-    ISSUE_NO_DEFINITION,
     ISSUE_DEFINITION_REFUSED,
     ISSUE_INTERVIEW_PARTIAL,
     ISSUE_DEVICE_OFFLINE,
@@ -143,6 +148,12 @@ def _local(when: datetime | None) -> str:
     return dt_util.as_local(when).strftime("%Y-%m-%d %H:%M") if when else "-"
 
 
+def _model(record: dict[str, Any]) -> str:
+    return " ".join(
+        str(x) for x in (record.get("manufacturer"), record.get("model_id")) if x
+    ) or str(record.get("id"))
+
+
 def _radio_device(record: dict[str, Any]) -> bool:
     """A Zigbee or GP device (not a group device)."""
     return record.get("group") is None and not str(record.get("id", "")).startswith("grp:")
@@ -172,6 +183,17 @@ class _Facts:
         )
 
 
+@dataclass(slots=True)
+class _Presence:
+    """The leave/rejoin events sent for a device."""
+
+    kind: str
+    # Monotonic times of the last ones.
+    sent: list[float] = field(default_factory=list)
+    # The window's end, when a change waits for it.
+    timer: CALLBACK_TYPE | None = None
+
+
 class HubMonitor:
     """Life-cycle events and repair issues of one hub."""
 
@@ -183,10 +205,13 @@ class HubMonitor:
         # The definition before the running interview (none while joining).
         self._stable_definition: dict[str, str | None] = {}
         self._ha_ids: dict[str, str] = {}
-        self._fired: dict[tuple[str, str], float] = {}
+        self._presence_sent: dict[str, _Presence] = {}
         # (issue kind, device) → since when its condition holds.
         self._since: dict[tuple[str, str], datetime] = {}
+        # Refused definitions: one issue per device; devices without any:
+        # one issue of the hub.
         self._catalog_issues: set[tuple[str, str]] = set()
+        self._no_definition: set[str] = set()
         # Devices `definition_missing` was fired for (or that were missing
         # already at the first catalog status: no event for those).
         self._missing_fired: set[str] = set()
@@ -217,6 +242,10 @@ class HubMonitor:
         if self._catalog_recheck is not None:
             self._catalog_recheck()
             self._catalog_recheck = None
+        for presence in self._presence_sent.values():
+            if presence.timer is not None:
+                presence.timer()
+                presence.timer = None
         # The crash issue stays (persistent, its dismissal kept); the others
         # are found again after the next set-up.
         for ident in self._issues:
@@ -279,6 +308,8 @@ class HubMonitor:
         old = self._devices.get(dev_id)
         self._devices[dev_id] = new
         self._ha_device_id(dev_id)
+        if dev_id in self._no_definition:
+            self._update_no_definition()  # renamed, disabled
         if old is None:
             if added:
                 joined = new.interview == "in_progress"
@@ -293,11 +324,11 @@ class HubMonitor:
     @callback
     def _compare(self, dev_id: str, old: _Facts, new: _Facts) -> None:
         if new.left and not old.left:
-            self._fire(dev_id, "device_left")
+            self._presence(dev_id, "device_left")
         elif old.left and not new.left:
-            self._fire(dev_id, "device_rejoined")
+            self._presence(dev_id, "device_rejoined")
         elif old.nwk is not None and new.nwk is not None and old.nwk != new.nwk:
-            self._fire(dev_id, "device_rejoined", nwk=f"0x{new.nwk:04X}")
+            self._presence(dev_id, "device_rejoined", nwk=f"0x{new.nwk:04X}")
         if new.interview != old.interview:
             if new.interview == "in_progress":
                 self._fire(dev_id, "interview_started")
@@ -336,12 +367,16 @@ class HubMonitor:
         self._stable_definition.pop(dev_id, None)
         self._missing_fired.discard(dev_id)
         self._ha_ids.pop(dev_id, None)
-        for key in [k for k in self._fired if k[0] == dev_id]:
-            del self._fired[key]
+        presence = self._presence_sent.pop(dev_id, None)
+        if presence is not None and presence.timer is not None:
+            presence.timer()
         for kind in _DEVICE_ISSUES:
             self._since.pop((kind, dev_id), None)
             self._catalog_issues.discard((kind, dev_id))
             self._delete(issue_id(kind, self._entry_id, dev_id))
+        if dev_id in self._no_definition:
+            self._no_definition.discard(dev_id)
+            self._update_no_definition()
 
     @callback
     def _interview_progress(self, event: dict[str, Any]) -> None:
@@ -412,13 +447,51 @@ class HubMonitor:
         return (dev.name_by_user or dev.name or fallback) if dev else fallback
 
     @callback
-    def _fire(self, dev_id: str, kind: str, **extra: Any) -> None:
-        if kind in _RATE_LIMITED:
-            now = time.monotonic()
-            last = self._fired.get((dev_id, kind))
-            if last is not None and now - last < const.EVENT_DEDUPE.total_seconds():
+    def _presence(self, dev_id: str, kind: str, **extra: Any) -> None:
+        """A leave or rejoin (`kind`) of a device, rate-limited."""
+        now = time.monotonic()
+        window = const.EVENT_DEDUPE.total_seconds()
+        presence = self._presence_sent.get(dev_id)
+        if presence is not None:
+            presence.sent = [t for t in presence.sent if now - t < window]
+            if kind == presence.kind and presence.sent:
+                return  # reported already (a rejoin with a new address)
+            if len(presence.sent) >= _PRESENCE_BURST:
+                # Flapping: the state when the window ends, if it differs.
+                if presence.timer is None:
+                    presence.timer = async_call_later(
+                        self.hass,
+                        presence.sent[0] + window - now,
+                        partial(self._presence_due, dev_id),
+                    )
                 return
-            self._fired[(dev_id, kind)] = now
+        self._send_presence(dev_id, kind, **extra)
+
+    @callback
+    def _send_presence(self, dev_id: str, kind: str, **extra: Any) -> None:
+        presence = self._presence_sent.setdefault(dev_id, _Presence(kind))
+        presence.kind = kind
+        presence.sent.append(time.monotonic())
+        if presence.timer is not None:
+            presence.timer()
+            presence.timer = None
+        self._fire(dev_id, kind, **extra)
+
+    @callback
+    def _presence_due(self, dev_id: str, _now: datetime) -> None:
+        presence = self._presence_sent.get(dev_id)
+        facts = self._devices.get(dev_id)
+        if presence is None:
+            return
+        presence.timer = None
+        if facts is None:
+            return
+        kind = "device_left" if facts.left else "device_rejoined"
+        if kind != presence.kind:
+            self._send_presence(dev_id, kind)
+
+    @callback
+    def _fire(self, dev_id: str, kind: str, **extra: Any) -> None:
         facts = self._devices.get(dev_id)
         self.hass.bus.async_fire(
             EVENT_HUB,
@@ -658,7 +731,28 @@ class HubMonitor:
             present = self._missing_definitions(cat.status.get("missing"))
         for kind, dev_id in self._catalog_issues - present:
             self._delete(issue_id(kind, self._entry_id, dev_id))
-        self._catalog_issues = present
+        self._catalog_issues = {k for k in present if k[0] != ISSUE_NO_DEFINITION}
+        self._no_definition = {d for k, d in present if k == ISSUE_NO_DEFINITION}
+        self._update_no_definition()
+
+    @callback
+    def _update_no_definition(self) -> None:
+        """The issue listing the devices without a definition."""
+        devices = sorted(
+            (self._name(dev_id, str(rec.get("name") or rec.get("model") or dev_id)), _model(rec))
+            for dev_id in self._no_definition
+            if (rec := self.hub.devices.get(dev_id)) is not None and rec.get("disabled") is not True
+        )
+        ident = issue_id(ISSUE_NO_DEFINITION, self._entry_id)
+        if not devices:
+            self._delete(ident)
+            return
+        lines = [f"- {name} ({model})" for name, model in devices[:_LIST_MAX]]
+        if len(devices) > _LIST_MAX:
+            lines.append("- …")
+        self._create(
+            ISSUE_NO_DEFINITION, None, {"count": str(len(devices)), "devices": "\n".join(lines)}
+        )
 
     @callback
     def _missing_definitions(self, missing: Any) -> set[tuple[str, str]]:
@@ -680,16 +774,13 @@ class HubMonitor:
             else:
                 continue  # shards still to fetch
             present.add((kind, dev_id))
-            placeholders = {
-                "name": self._name(dev_id, str(rec.get("name") or rec.get("model") or dev_id)),
-                "model": " ".join(
-                    str(x) for x in (rec.get("manufacturer"), rec.get("model_id")) if x
+            if kind == ISSUE_DEFINITION_REFUSED and rec.get("disabled") is not True:
+                name = self._name(dev_id, str(rec.get("name") or rec.get("model") or dev_id))
+                self._create(
+                    kind,
+                    dev_id,
+                    {"name": name, "model": _model(rec), "reason": "; ".join(refused)},
                 )
-                or dev_id,
-                "reason": "; ".join(refused),
-            }
-            if rec.get("disabled") is not True:
-                self._create(kind, dev_id, placeholders)
             if dev_id not in self._missing_fired:
                 self._missing_fired.add(dev_id)
                 if self._missing_baseline:

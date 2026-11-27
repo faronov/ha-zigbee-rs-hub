@@ -123,17 +123,20 @@ has, and the integration maps them 1:1 onto HA platforms.
   ones this firmware cannot run, with the reason) and `hub_crashed`. The hub
   sends no join, leave or announce events of its own: they are derived from
   its device records, `interview_progress`, the catalog status and
-  `hub/system`; a snapshot after a reconnect fires nothing, and a device's
-  leave or rejoin at most once a minute.
+  `hub/system`; a snapshot after a reconnect fires nothing. A flapping
+  device's leaves and rejoins: at most two a minute, a later change is fired
+  when the minute ends if it still holds, so the last event always tells the
+  device's state.
 - **Repairs** (*Settings → System → Repairs*), removed again when resolved:
   the hub's last restart was a crash (`hub/system` `reset_reason`: panic,
   watchdog, brownout; kept over HA restarts, shown again after the next
-  crash, gone after a clean restart); a device without a definition (the
-  catalog has nothing for it, or its matches need features this hub firmware
-  lacks, e.g. `requires template.tuya_…`); an interview partial for more than
-  2 hours (fix: wake the device and re-interview it); a device unheard for
-  more than 24 hours, or gone from the network (left) for 10 minutes; a
-  failed definitions catalog update (fix: run it again).
+  crash, gone after a clean restart); the devices the catalog has no
+  definition for (one issue listing them: they work on generic support); a
+  device whose catalog matches need features this hub firmware lacks (one
+  each, with the reason, e.g. `requires template.tuya_…`); an interview
+  partial for more than 2 hours (fix: wake the device and re-interview it);
+  a device unheard for more than 24 hours, or gone from the network (left)
+  for 10 minutes; a failed definitions catalog update (fix: run it again).
 - Diagnostics (entry and device; the device download includes the hub's
   `devices/diagnostics`), with the token and any keys redacted.
 - English and Russian translations.

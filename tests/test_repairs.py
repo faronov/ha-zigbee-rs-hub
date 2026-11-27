@@ -154,44 +154,58 @@ async def test_missing_definitions(
     fake_hub.catalog = FakeCatalog()
     fake_hub.catalog.missing = [
         {"device": SENSOR_DEV, "shards": []},
-        # Shards still to fetch: no issue yet.
+        # Shards still to fetch: not listed yet.
         {"device": LIGHT_DEV, "shards": [0x1A]},
     ]
     await setup(hass, config_entry)
-    # Missing at set-up already: an issue, no event (none at every HA start).
-    assert issue(hass, issue_id("no_definition", config_entry, SENSOR_DEV)) is not None
+    # Missing at set-up already: listed, no event (none at every HA start).
+    generic = issue_id("no_definition", config_entry)
+    assert issue(hass, generic).translation_placeholders == {
+        "hub": config_entry.title,
+        "count": "1",
+        "devices": "- Motion sensor (LUMI Motion sensor)",
+    }
     assert not events
-    fake_hub.catalog.missing.append(
+
+    # Fetched, nothing for the dimmer either; the remote's needs newer firmware.
+    fake_hub.catalog.missing = [
+        {"device": SENSOR_DEV, "shards": []},
+        {"device": LIGHT_DEV, "shards": []},
         {
             "device": REMOTE_DEV,
             "shards": [],
             "refused": ["ikea/e2001 (IKEA E2001) requires template.ikea_styrbar"],
-        }
-    )
+        },
+    ]
     await config_entry.runtime_data.catalog.async_refresh()
     await hass.async_block_till_done()
-    none = issue(hass, issue_id("no_definition", config_entry, SENSOR_DEV))
-    assert none is not None
-    assert none.translation_placeholders["name"] == "Motion sensor"
-    assert none.translation_placeholders["model"] == "LUMI Motion sensor"
+    # One issue for all generic-only devices.
+    assert issue(hass, generic).translation_placeholders["devices"] == (
+        "- Dimmer (ACME Dimmer)\n- Motion sensor (LUMI Motion sensor)"
+    )
+    assert issue(hass, generic).translation_placeholders["count"] == "2"
     refused = issue(hass, issue_id("definition_refused", config_entry, REMOTE_DEV))
     assert refused.translation_placeholders["reason"] == (
         "ikea/e2001 (IKEA E2001) requires template.ikea_styrbar"
     )
-    assert issue(hass, issue_id("no_definition", config_entry, LIGHT_DEV)) is None
     assert [(e.data["type"], e.data["device"], e.data.get("reason")) for e in events] == [
+        ("definition_missing", LIGHT_DEV, None),
         (
             "definition_missing",
             REMOTE_DEV,
             "ikea/e2001 (IKEA E2001) requires template.ikea_styrbar",
-        )
+        ),
     ]
+
+    # The dimmer is removed: the list follows at once.
+    await fake_hub.push("devices", {"topic": "device_removed", "id": LIGHT_DEV})
+    await wait_for(hass, lambda: issue(hass, generic).translation_placeholders["count"] == "1")
 
     # The remote got its definition, the sensor is gone from `missing`.
     fake_hub.catalog.missing = []
     await config_entry.runtime_data.catalog.async_refresh()
     await hass.async_block_till_done()
-    assert issue(hass, issue_id("no_definition", config_entry, SENSOR_DEV)) is None
+    assert issue(hass, generic) is None
     assert issue(hass, issue_id("definition_refused", config_entry, REMOTE_DEV)) is None
     await hass.config_entries.async_unload(config_entry.entry_id)
 
